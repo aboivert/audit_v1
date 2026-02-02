@@ -1,0 +1,1503 @@
+{% extends "base.html" %}
+
+{% block title %}Contenu GTFS - GTFS Audit Tool{% endblock %}
+
+{% block content %}
+<div class="statistics-container">
+    <!-- Header avec gradient et animation -->
+    <div class="stats-header">
+        <div class="header-content">
+            <div class="header-left">
+                <div class="header-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <div class="header-text">
+                    <h1>Contenu du GTFS</h1>
+                    <p class="header-subtitle">Analyse complète de votre dataset</p>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="gtfs-badge">
+                    <i class="fas fa-file-archive"></i>
+                    <span>{{ session.gtfs_filename }}</span>
+                </div>
+                <button class="refresh-btn" onclick="refreshAllStatistics()">
+                    <i class="fas fa-sync-alt"></i>
+                    <span>Actualiser</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Cards - Statistiques essentielles -->
+    <div class="dashboard-overview">
+        <div class="overview-grid" id="dashboardCards">
+            <!-- Les cartes seront générées dynamiquement -->
+            <div class="loading-card">
+                <div class="loading-spinner"></div>
+                <p>Chargement des statistiques...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Navigation par onglets -->
+    <div class="category-navigation">
+        <div class="nav-container">
+            <div class="nav-tabs" id="categoryTabs">
+                <!-- Tabs générés dynamiquement -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenu des catégories -->
+    <div class="category-content">
+        <div class="content-container" id="categoryContent">
+            <!-- Contenu généré dynamiquement -->
+        </div>
+    </div>
+</div>
+
+<!-- Modal pour les détails -->
+<div class="modal fade" id="statisticModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalTitle">Détails de la statistique</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Contenu dynamique -->
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block styles %}
+<style>
+/* Variables CSS pour le thème */
+:root {
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --warning-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+    --danger-gradient: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    --info-gradient: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+    
+    --card-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    --card-hover-shadow: 0 20px 60px rgba(0,0,0,0.15);
+    --border-radius: 16px;
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Container principal */
+.statistics-container {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 0;
+}
+
+/* Header avec gradient magnifique */
+.stats-header {
+    background: var(--primary-gradient);
+    padding: 2rem 0;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.stats-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 20"><defs><radialGradient id="a" cx="50%" cy="0%" r="100%"><stop offset="0%" stop-color="%23fff" stop-opacity=".1"/><stop offset="100%" stop-color="%23fff" stop-opacity="0"/></radialGradient></defs><rect width="100" height="20" fill="url(%23a)"/></svg>');
+    animation: shimmer 3s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+    position: relative;
+    z-index: 1;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.header-icon {
+    width: 64px;
+    height: 64px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+.header-icon i {
+    font-size: 2rem;
+    color: white;
+}
+
+.header-text h1 {
+    color: white;
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin: 0;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.2);
+}
+
+.header-subtitle {
+    color: rgba(255,255,255,0.9);
+    font-size: 1.1rem;
+    margin: 0.5rem 0 0 0;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.gtfs-badge {
+    background: rgba(255,255,255,0.2);
+    padding: 0.75rem 1.5rem;
+    border-radius: 50px;
+    color: white;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.3);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.refresh-btn {
+    background: rgba(255,255,255,0.2);
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: var(--transition);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+}
+
+.refresh-btn:hover {
+    background: rgba(255,255,255,0.3);
+    transform: translateY(-2px);
+}
+
+.refresh-btn i {
+    transition: transform 0.3s ease;
+}
+
+.refresh-btn:hover i {
+    transform: rotate(360deg);
+}
+
+/* Dashboard Cards */
+.dashboard-overview {
+    max-width: 1200px;
+    margin: 0 auto 3rem auto;
+    padding: 0 2rem;
+}
+
+.overview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+}
+
+.stat-card {
+    background: white;
+    border-radius: var(--border-radius);
+    padding: 2rem;
+    box-shadow: var(--card-shadow);
+    transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--primary-gradient);
+}
+
+.stat-card:hover {
+    transform: translateY(-8px);
+    box-shadow: var(--card-hover-shadow);
+}
+
+.stat-card.files::before { background: var(--info-gradient); }
+.stat-card.agency::before { background: var(--primary-gradient); }
+.stat-card.routes::before { background: var(--success-gradient); }
+.stat-card.stops::before { background: var(--warning-gradient); }
+.stat-card.trips::before { background: var(--secondary-gradient); }
+.stat-card.calendar::before { background: var(--danger-gradient); }
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+}
+
+.card-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+}
+
+.card-icon.files { background: var(--info-gradient); }
+.card-icon.agency { background: var(--primary-gradient); }
+.card-icon.routes { background: var(--success-gradient); }
+.card-icon.stops { background: var(--warning-gradient); }
+.card-icon.trips { background: var(--secondary-gradient); }
+.card-icon.calendar { background: var(--danger-gradient); }
+
+.card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2d3748;
+    margin: 0;
+}
+
+.card-main {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.card-value {
+    font-size: 3rem;
+    font-weight: 800;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+
+.card-label {
+    color: #718096;
+    font-size: 0.9rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.card-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.card-detail {
+    text-align: center;
+}
+
+.card-detail-value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.card-detail-label {
+    font-size: 0.8rem;
+    color: #718096;
+    margin-top: 0.25rem;
+}
+
+/* Loading Animation */
+.loading-card {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem;
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
+}
+
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid #e2e8f0;
+    border-top: 4px solid #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Navigation par onglets */
+.category-navigation {
+    background: white;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.05);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    margin-bottom: 2rem;
+}
+
+.nav-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+.nav-tabs {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.nav-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.nav-tab {
+    padding: 1.5rem 2rem;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    color: #718096;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.nav-tab:hover {
+    color: #4a5568;
+    background: rgba(102, 126, 234, 0.05);
+}
+
+.nav-tab.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
+    background: rgba(102, 126, 234, 0.05);
+}
+
+.nav-tab i {
+    font-size: 1.1rem;
+}
+
+/* Contenu des catégories */
+.category-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem 4rem 2rem;
+}
+
+.category-section {
+    display: none;
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+.category-section.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.section-header {
+    margin-bottom: 2rem;
+}
+
+.section-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin-bottom: 0.5rem;
+}
+
+.section-description {
+    color: #718096;
+    font-size: 1.1rem;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 2rem;
+}
+
+.detailed-stat-card {
+    background: white;
+    border-radius: var(--border-radius);
+    padding: 2rem;
+    box-shadow: var(--card-shadow);
+    transition: var(--transition);
+    border-left: 4px solid #667eea;
+}
+
+.detailed-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--card-hover-shadow);
+}
+
+.stat-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+}
+
+.stat-name {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin: 0;
+}
+
+.stat-description {
+    color: #718096;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+}
+
+.stat-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 50px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.stat-status.success {
+    background: rgba(72, 187, 120, 0.1);
+    color: #38a169;
+}
+
+.stat-status.warning {
+    background: rgba(237, 137, 54, 0.1);
+    color: #d69e2e;
+}
+
+.stat-status.error {
+    background: rgba(245, 101, 101, 0.1);
+    color: #e53e3e;
+}
+
+.stat-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.stat-metric {
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    padding: 1rem;
+    background: #f7fafc;
+    border-radius: 12px;
+}
+
+.stat-metric-value {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #2d3748;
+    line-height: 1;
+}
+
+.stat-metric-label {
+    font-size: 0.8rem;
+    color: #718096;
+    margin-top: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Charts et visualisations */
+.chart-container {
+    margin-top: 1.5rem;
+    padding: 1rem;
+    background: #f7fafc;
+    border-radius: 12px;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 1rem;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--primary-gradient);
+    border-radius: 4px;
+    transition: width 1s ease-in-out;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .header-content {
+        flex-direction: column;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .overview-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .nav-tab {
+        padding: 1rem 1.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .stat-content {
+        flex-direction: column;
+    }
+}
+
+/* Animations et micro-interactions */
+.pulse {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+.bounce-in {
+    animation: bounceIn 0.6s ease-out;
+}
+
+@keyframes bounceIn {
+    0% { transform: scale(0.3); opacity: 0; }
+    50% { transform: scale(1.05); }
+    70% { transform: scale(0.9); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* Tooltips personnalisés */
+.tooltip-custom {
+    position: relative;
+    cursor: help;
+}
+
+.tooltip-custom:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2d3748;
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    z-index: 1000;
+    animation: fadeIn 0.3s ease-in-out;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Configuration des icônes par catégorie
+const categoryIcons = {
+    'files': 'fas fa-folder-open',
+    'agency': 'fas fa-building',
+    'routes': 'fas fa-route',
+    'stops': 'fas fa-map-marker-alt',
+    'trips': 'fas fa-subway',
+    'calendar': 'fas fa-calendar-alt',
+    'schedule': 'fas fa-clock',
+    'quality': 'fas fa-star',
+    'shapes': 'fas fa-bezier-curve',
+    'fares': 'fas fa-euro-sign',
+    'transfers': 'fas fa-exchange-alt',
+    'pathways': 'fas fa-walking',
+    'extensions': 'fas fa-puzzle-piece',
+    'summary': 'fas fa-chart-pie'
+};
+
+// Configuration des couleurs par catégorie
+const categoryColors = {
+    'files': '#4299e1',
+    'agency': '#667eea',
+    'routes': '#48bb78',
+    'stops': '#38b2ac',
+    'trips': '#ed64a6',
+    'calendar': '#f56565',
+    'schedule': '#ed8936',
+    'quality': '#9f7aea',
+    'shapes': '#38a169',
+    'fares': '#d69e2e',
+    'transfers': '#3182ce',
+    'pathways': '#805ad5',
+    'extensions': '#718096',
+    'summary': '#e53e3e'
+};
+
+let currentCategory = 'files';
+let statisticsData = {};
+
+// Initialisation
+document.addEventListener('DOMContentLoaded', function() {
+    initializeStatistics();
+    loadEssentialStatistics();
+});
+
+async function initializeStatistics() {
+    try {
+        // Récupérer les catégories via l'API au lieu de Jinja2
+        const response = await fetch('/api/statistics/health');
+        const healthData = await response.json();
+        const categoriesFromServer = healthData.categories || [];
+        
+        createCategoryTabs(categoriesFromServer);
+        
+        // Charger la première catégorie
+        if (categoriesFromServer.length > 0) {
+            await loadCategoryStatistics(categoriesFromServer[0]);
+        }
+    } catch (error) {
+        console.error('Erreur lors de l\'initialisation:', error);
+        showError('Erreur lors du chargement des statistiques');
+    }
+}
+
+async function loadEssentialStatistics() {
+    try {
+        showLoadingCards();
+        
+        const response = await fetch('/api/statistics/essential');
+        const data = await response.json();
+        
+        if (data.success) {
+            createDashboardCards(data.results);
+        } else {
+            showError(data.error);
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showError('Erreur lors du chargement des statistiques essentielles');
+    }
+}
+
+function createDashboardCards(results) {
+    const container = document.getElementById('dashboardCards');
+    container.innerHTML = '';
+    
+    // Cartes principales
+    const cards = [
+        {
+            category: 'files',
+            title: 'Fichiers',
+            value: results.files?.present_files?.result?.count || 0,
+            details: `${results.files?.present_files?.result?.total_rows || 0} lignes`,
+            icon: 'fas fa-folder-open'
+        },
+        {
+            category: 'agency',
+            title: 'Agences',
+            value: results.agency?.agency_count?.result?.count || 0,
+            details: results.agency?.agency_count?.result?.has_multiple ? 'Multi-agences' : 'Mono-agence',
+            icon: 'fas fa-building'
+        },
+        {
+            category: 'routes',
+            title: 'Routes',
+            value: results.routes?.routes_count_by_type?.result?.total || 0,
+            details: `${Object.keys(results.routes?.routes_count_by_type?.result?.by_type || {}).length} types`,
+            icon: 'fas fa-route'
+        },
+        {
+            category: 'stops',
+            title: 'Arrêts',
+            value: results.stops?.stops_count_by_type?.result?.total || 0,
+            details: `${results.stops?.stops_count_by_type?.result?.coordinates_rate || 0}% géolocalisés`,
+            icon: 'fas fa-map-marker-alt'
+        },
+        {
+            category: 'trips',
+            title: 'Voyages',
+            value: results.trips?.trips_count_and_info?.result?.total || 0,
+            details: `${results.trips?.trips_count_and_info?.result?.shape_rate || 0}% avec tracés`,
+            icon: 'fas fa-subway'
+        },
+        {
+            category: 'calendar',
+            title: 'Validité',
+            value: results.calendar?.calendar_validity_period?.result?.duration_days || 0,
+            details: 'jours',
+            icon: 'fas fa-calendar-alt'
+        }
+    ];
+    
+    cards.forEach(card => {
+        const cardElement = createStatCard(card);
+        container.appendChild(cardElement);
+    });
+}
+
+function createStatCard(card) {
+    const cardEl = document.createElement('div');
+    cardEl.className = `stat-card ${card.category} bounce-in`;
+    cardEl.onclick = () => switchToCategory(card.category);
+    
+    cardEl.innerHTML = `
+        <div class="card-header">
+            <h3 class="card-title">${card.title}</h3>
+            <div class="card-icon ${card.category}">
+                <i class="${card.icon}"></i>
+            </div>
+        </div>
+        <div class="card-main">
+            <div class="card-value">${formatNumber(card.value)}</div>
+            <div class="card-label">${card.details}</div>
+        </div>
+    `;
+    
+    return cardEl;
+}
+
+function createCategoryTabs(categories) {
+    const tabContainer = document.getElementById('categoryTabs');
+    tabContainer.innerHTML = '';
+    
+    categories.forEach((category, index) => {
+        const tab = document.createElement('div');
+        tab.className = `nav-tab ${index === 0 ? 'active' : ''}`;
+        tab.onclick = () => switchToCategory(category);
+        
+        const icon = categoryIcons[category] || 'fas fa-chart-bar';
+        const name = formatCategoryName(category);
+        
+        tab.innerHTML = `
+            <i class="${icon}"></i>
+            <span>${name}</span>
+        `;
+        
+        tabContainer.appendChild(tab);
+    });
+}
+
+async function switchToCategory(category) {
+    // Mettre à jour les onglets
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    event.target.closest('.nav-tab').classList.add('active');
+    
+    currentCategory = category;
+    await loadCategoryStatistics(category);
+}
+
+async function loadCategoryStatistics(category) {
+    try {
+        showLoadingInCategory();
+        
+        const response = await fetch(`/api/statistics/category/${category}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            displayCategoryStatistics(category, data.results);
+        } else {
+            showError(data.error);
+        }
+    } catch (error) {
+        console.error('Erreur:', error);
+        showError(`Erreur lors du chargement de la catégorie ${category}`);
+    }
+}
+
+function displayCategoryStatistics(category, results) {
+    const container = document.getElementById('categoryContent');
+    container.innerHTML = '';
+    
+    const section = document.createElement('div');
+    section.className = 'category-section active';
+    
+    const categoryName = formatCategoryName(category);
+    const categoryIcon = categoryIcons[category] || 'fas fa-chart-bar';
+    
+    section.innerHTML = `
+        <div class="section-header">
+            <h2 class="section-title">
+                <i class="${categoryIcon}" style="color: ${categoryColors[category] || '#667eea'}; margin-right: 0.75rem;"></i>
+                ${categoryName}
+            </h2>
+            <p class="section-description">Analyse détaillée des données ${categoryName.toLowerCase()}</p>
+        </div>
+        <div class="stats-grid" id="statsGrid">
+            <!-- Statistiques générées dynamiquement -->
+        </div>
+    `;
+    
+    container.appendChild(section);
+    
+    const statsGrid = document.getElementById('statsGrid');
+    
+    Object.entries(results).forEach(([functionName, statData]) => {
+        if (statData.result) {
+            const statCard = createDetailedStatCard(statData, functionName);
+            statsGrid.appendChild(statCard);
+        }
+    });
+}
+
+function createDetailedStatCard(statData, functionName) {
+    const card = document.createElement('div');
+    card.className = 'detailed-stat-card bounce-in';
+    
+    const result = statData.result;
+    const isError = statData.error;
+    
+    let contentHtml = '';
+    let statusClass = 'success';
+    let statusText = 'OK';
+    
+    if (isError) {
+        statusClass = 'error';
+        statusText = 'Erreur';
+        contentHtml = `<div class="stat-error">Erreur: ${statData.error}</div>`;
+    } else {
+        // Générer le contenu selon le type de résultat
+        contentHtml = generateStatContent(result);
+        
+        // Déterminer le statut
+        if (typeof result === 'object' && result.error) {
+            statusClass = 'error';
+            statusText = 'Erreur';
+        } else if (typeof result === 'object' && result.warning) {
+            statusClass = 'warning';
+            statusText = 'Attention';
+        }
+    }
+    
+    card.innerHTML = `
+        <div class="stat-header">
+            <div>
+                <h3 class="stat-name">${statData.name}</h3>
+                <p class="stat-description">${statData.description}</p>
+            </div>
+            <span class="stat-status ${statusClass}">${statusText}</span>
+        </div>
+        <div class="stat-content">
+            ${contentHtml}
+        </div>
+    `;
+    
+    return card;
+}
+
+function generateStatContent(result) {
+    if (typeof result === 'number') {
+        return `<div class="stat-metric">
+            <div class="stat-metric-value">${formatNumber(result)}</div>
+        </div>`;
+    }
+    
+    if (typeof result === 'object' && result !== null) {
+        let html = '<div class="stat-metrics">';
+        
+        // Afficher les métriques principales
+        Object.entries(result).forEach(([key, value]) => {
+            if (typeof value === 'number' && !key.includes('_rate') && !key.includes('_count')) {
+                html += `
+                    <div class="stat-metric">
+                        <div class="stat-metric-value">${formatNumber(value)}</div>
+                        <div class="stat-metric-label">${formatKey(key)}</div>
+                    </div>
+                `;
+            }
+        });
+        
+        html += '</div>';
+        
+        // Afficher les pourcentages avec barres de progression
+        Object.entries(result).forEach(([key, value]) => {
+            if (typeof value === 'number' && key.includes('_rate')) {
+                html += `
+                    <div class="progress-container">
+                        <div class="progress-label">${formatKey(key)}: ${value}%</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${Math.min(value, 100)}%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+        
+        // Afficher les objets imbriqués (comme by_type)
+        Object.entries(result).forEach(([key, value]) => {
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                html += `
+                    <div class="nested-data">
+                        <h4 class="nested-title">${formatKey(key)}</h4>
+                        <div class="nested-content">
+                `;
+                
+                Object.entries(value).forEach(([subKey, subValue]) => {
+                    html += `
+                        <div class="nested-item">
+                            <span class="nested-key">${subKey}</span>
+                            <span class="nested-value">${formatNumber(subValue)}</span>
+                        </div>
+                    `;
+                });
+                
+                html += '</div></div>';
+            }
+        });
+        
+        // Afficher les listes
+        Object.entries(result).forEach(([key, value]) => {
+            if (Array.isArray(value) && value.length > 0) {
+                html += `
+                    <div class="list-data">
+                        <h4 class="list-title">${formatKey(key)} (${value.length})</h4>
+                        <div class="list-content">
+                            ${value.map(item => `<span class="list-item">${item}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        });
+        
+        return html;
+    }
+    
+    return `<div class="stat-simple">${result}</div>`;
+}
+
+// Fonctions utilitaires
+function formatNumber(num) {
+    if (num === null || num === undefined) return 'N/A';
+    if (typeof num !== 'number') return num;
+    
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'k';
+    }
+    return num.toLocaleString();
+}
+
+function formatKey(key) {
+    return key
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, l => l.toUpperCase())
+        .replace(' Rate', ' (%)')
+        .replace(' Count', '');
+}
+
+function formatCategoryName(category) {
+    const names = {
+        'files': 'Fichiers',
+        'agency': 'Agences',
+        'routes': 'Routes',
+        'stops': 'Arrêts',
+        'trips': 'Voyages',
+        'calendar': 'Calendrier',
+        'schedule': 'Horaires',
+        'quality': 'Qualité',
+        'shapes': 'Tracés',
+        'fares': 'Tarifs',
+        'transfers': 'Correspondances',
+        'pathways': 'Cheminements',
+        'extensions': 'Extensions',
+        'summary': 'Résumé'
+    };
+    return names[category] || category;
+}
+
+function showLoadingCards() {
+    const container = document.getElementById('dashboardCards');
+    container.innerHTML = `
+        <div class="loading-card">
+            <div class="loading-spinner"></div>
+            <p>Chargement des statistiques...</p>
+        </div>
+    `;
+}
+
+function showLoadingInCategory() {
+    const container = document.getElementById('categoryContent');
+    container.innerHTML = `
+        <div class="loading-container">
+            <div class="loading-spinner"></div>
+            <p>Chargement des données...</p>
+        </div>
+    `;
+}
+
+function showError(message) {
+    const container = document.getElementById('dashboardCards');
+    container.innerHTML = `
+        <div class="error-card">
+            <div class="error-icon">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h3>Erreur</h3>
+            <p>${message}</p>
+            <button onclick="location.reload()" class="retry-btn">
+                <i class="fas fa-redo"></i> Réessayer
+            </button>
+        </div>
+    `;
+}
+
+async function refreshAllStatistics() {
+    const button = document.querySelector('.refresh-btn');
+    const icon = button.querySelector('i');
+    
+    // Animation du bouton
+    button.disabled = true;
+    icon.style.animation = 'spin 1s linear infinite';
+    
+    try {
+        // Actualiser les statistiques essentielles
+        await loadEssentialStatistics();
+        
+        // Actualiser la catégorie courante
+        if (currentCategory) {
+            await loadCategoryStatistics(currentCategory);
+        }
+        
+        // Notification de succès
+        showNotification('Statistiques actualisées avec succès!', 'success');
+        
+    } catch (error) {
+        console.error('Erreur lors de l\'actualisation:', error);
+        showNotification('Erreur lors de l\'actualisation', 'error');
+    } finally {
+        // Réactiver le bouton
+        button.disabled = false;
+        icon.style.animation = '';
+    }
+}
+
+function showNotification(message, type = 'info') {
+    // Créer la notification
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+        <div class="notification-content">
+            <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>
+            <span>${message}</span>
+        </div>
+        <button class="notification-close" onclick="this.parentElement.remove()">
+            <i class="fas fa-times"></i>
+        </button>
+    `;
+    
+    // Ajouter au DOM
+    document.body.appendChild(notification);
+    
+    // Animation d'entrée
+    setTimeout(() => notification.classList.add('show'), 100);
+    
+    // Suppression automatique
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => notification.remove(), 300);
+    }, 5000);
+}
+
+// Event listeners pour l'interactivité
+document.addEventListener('click', function(e) {
+    // Gestion des clics sur les cartes statistiques
+    if (e.target.closest('.stat-card')) {
+        const card = e.target.closest('.stat-card');
+        card.classList.add('pulse');
+        setTimeout(() => card.classList.remove('pulse'), 600);
+    }
+    
+    // Gestion des clics sur les métriques détaillées
+    if (e.target.closest('.detailed-stat-card')) {
+        const card = e.target.closest('.detailed-stat-card');
+        // Ici on pourrait ajouter une modal avec plus de détails
+    }
+});
+
+// Animation au scroll
+function animateOnScroll() {
+    const cards = document.querySelectorAll('.detailed-stat-card');
+    
+    cards.forEach(card => {
+        const rect = card.getBoundingClientRect();
+        const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
+        
+        if (isVisible && !card.classList.contains('animated')) {
+            card.classList.add('bounce-in', 'animated');
+        }
+    });
+}
+
+window.addEventListener('scroll', animateOnScroll);
+
+// Raccourcis clavier
+document.addEventListener('keydown', function(e) {
+    // R pour actualiser
+    if (e.key === 'r' || e.key === 'R') {
+        if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            refreshAllStatistics();
+        }
+    }
+    
+    // Flèches pour naviguer entre onglets
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const tabs = document.querySelectorAll('.nav-tab');
+        const activeIndex = Array.from(tabs).findIndex(tab => tab.classList.contains('active'));
+        
+        let newIndex;
+        if (e.key === 'ArrowLeft') {
+            newIndex = activeIndex > 0 ? activeIndex - 1 : tabs.length - 1;
+        } else {
+            newIndex = activeIndex < tabs.length - 1 ? activeIndex + 1 : 0;
+        }
+        
+        if (newIndex !== activeIndex) {
+            tabs[newIndex].click();
+        }
+    }
+});
+</script>
+
+<style>
+/* Styles additionnels pour les nouvelles fonctionnalités */
+
+.progress-container {
+    margin: 1rem 0;
+}
+
+.progress-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #4a5568;
+    margin-bottom: 0.5rem;
+}
+
+.nested-data, .list-data {
+    margin-top: 1.5rem;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    border-left: 4px solid #667eea;
+}
+
+.nested-title, .list-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #2d3748;
+    margin: 0 0 1rem 0;
+}
+
+.nested-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.nested-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem;
+    background: #f7fafc;
+    border-radius: 8px;
+    transition: var(--transition);
+}
+
+.nested-item:hover {
+    background: #edf2f7;
+    transform: translateX(4px);
+}
+
+.nested-key {
+    font-weight: 600;
+    color: #4a5568;
+}
+
+.nested-value {
+    font-weight: 800;
+    color: #2d3748;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.list-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.list-item {
+    background: var(--primary-gradient);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+    transition: var(--transition);
+}
+
+.list-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+}
+
+.error-card {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 4rem 2rem;
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--card-shadow);
+    border-left: 4px solid #f56565;
+}
+
+.error-icon {
+    font-size: 3rem;
+    color: #f56565;
+    margin-bottom: 1rem;
+}
+
+.error-card h3 {
+    font-size: 1.8rem;
+    color: #2d3748;
+    margin-bottom: 1rem;
+}
+
+.error-card p {
+    color: #718096;
+    margin-bottom: 2rem;
+}
+
+.retry-btn {
+    background: var(--danger-gradient);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 25px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.retry-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(245, 101, 101, 0.3);
+}
+
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 6rem 2rem;
+    text-align: center;
+}
+
+.loading-container .loading-spinner {
+    margin-bottom: 2rem;
+}
+
+.loading-container p {
+    font-size: 1.1rem;
+    color: #718096;
+}
+
+/* Notifications */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: white;
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    border-left: 4px solid #48bb78;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 300px;
+    transform: translateX(400px);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+}
+
+.notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.notification-success {
+    border-left-color: #48bb78;
+}
+
+.notification-error {
+    border-left-color: #f56565;
+}
+
+.notification-content {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.notification-content i {
+    font-size: 1.2rem;
+}
+
+.notification-success .notification-content i {
+    color: #48bb78;
+}
+
+.notification-error .notification-content i {
+    color: #f56565;
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    font-size: 1rem;
+    color: #a0aec0;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 4px;
+    transition: var(--transition);
+}
+
+.notification-close:hover {
+    background: #edf2f7;
+    color: #4a5568;
+}
+
+/* Améliorations responsive */
+@media (max-width: 1024px) {
+    .nested-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .header-text h1 {
+        font-size: 2rem;
+    }
+    
+    .header-subtitle {
+        font-size: 1rem;
+    }
+    
+    .gtfs-badge, .refresh-btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .overview-grid {
+        gap: 1rem;
+    }
+    
+    .stat-card {
+        padding: 1.5rem;
+    }
+    
+    .card-value {
+        font-size: 2.5rem;
+    }
+    
+    .detailed-stat-card {
+        padding: 1.5rem;
+    }
+    
+    .notification {
+        right: 10px;
+        left: 10px;
+        min-width: auto;
+        transform: translateY(-100px);
+    }
+    
+    .notification.show {
+        transform: translateY(0);
+    }
+}
+
+/* Animations personnalisées pour mobile */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+</style>
+{% endblock %}

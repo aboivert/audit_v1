@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil - GTFS Audit Tool{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        
+        <!-- Étape 1: Sélection du projet -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <span class="badge bg-light text-primary me-2">1</span>
+                    <i class="fas fa-folder"></i> Sélection du Projet
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if session.current_project %}
+                    <!-- Projet déjà sélectionné -->
+                    <div class="alert alert-success">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-check-circle"></i>
+                                <strong>Projet sélectionné :</strong> 
+                                <span class="badge bg-primary">{{ session.current_project.trigramme }}</span>
+                                {{ session.current_project.nom }}
+                                {% if session.current_project.is_sandbox %}
+                                    <span class="badge bg-info ms-2">Sandbox</span>
+                                {% endif %}
+                                {% if session.current_project.coverage %}
+                                    <br><small class="text-muted">Coverage: {{ session.current_project.coverage }}</small>
+                                {% endif %}
+                            </div>
+                            <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#changeProject">
+                                <i class="fas fa-sync-alt"></i> Changer
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="collapse" id="changeProject">
+                        <div class="border-top pt-3">
+                {% endif %}
+                
+                <form method="POST" action="{{ url_for('main.select_project') }}">
+                    <div class="mb-3">
+                        <label for="project_select" class="form-label">
+                            <i class="fas fa-list"></i> Choisir un projet :
+                        </label>
+                        <select class="form-select" id="project_select" name="project_id" required>
+                            <option value="">-- Sélectionner un projet --</option>
+                            {% for project in projects %}
+                                <option value="{{ project.project_id }}" 
+                                        {% if session.current_project and session.current_project.id == project.project_id %}selected{% endif %}>
+                                    {{ project.trigramme }} - {{ project.nom_projet }}
+                                    {% if project.is_sandbox %} (Sandbox){% endif %}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-check"></i> Sélectionner ce projet
+                    </button>
+                    
+                    <a href="{{ url_for('admin.admin_page') }}" class="btn btn-outline-secondary ms-2">
+                        <i class="fas fa-cog"></i> Gérer les projets
+                    </a>
+                </form>
+                
+                {% if session.current_project %}
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Étape 2: Import GTFS -->
+        <div class="card">
+            <div class="card-header bg-{% if session.current_project %}primary{% else %}secondary{% endif %} text-white">
+                <h4 class="mb-0">
+                    <span class="badge bg-light text-{% if session.current_project %}primary{% else %}secondary{% endif %} me-2">2</span>
+                    <i class="fas fa-upload"></i> Importer un fichier GTFS
+                </h4>
+            </div>
+            <div class="card-body">
+                {% if not session.current_project %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Attention :</strong> Veuillez d'abord sélectionner un projet ci-dessus.
+                    </div>
+                {% elif session.gtfs_loaded %}
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i>
+                        <strong>GTFS chargé :</strong> {{ session.gtfs_filename }}
+                        <br><small class="text-muted">Pour le projet: {{ session.current_project.trigramme }} - {{ session.current_project.nom }}</small>
+                        <div class="mt-2">
+                            <a href="{{ url_for('audit.audit_page') }}" class="btn btn-success">
+                                <i class="fas fa-search"></i> Commencer l'audit
+                            </a>
+                            <a href="{{ url_for('visualization.visualization_page') }}" class="btn btn-info ms-2">
+                                <i class="fas fa-chart-bar"></i> Visualiser
+                            </a>
+                            <a href="{{ url_for('main.clear_session') }}" class="btn btn-outline-secondary ms-2">
+                                <i class="fas fa-trash"></i> Charger un nouveau GTFS
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- Infos sur le GTFS chargé -->
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">Informations sur le GTFS chargé</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                {% for file_type, info in session.gtfs_info.items() %}
+                                    <div class="col-md-6 mb-2">
+                                        <strong>{{ file_type }}</strong>: {{ info.rows }} lignes
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="mb-3">
+                        <label class="form-label">
+                            <i class="fas fa-download"></i> Mode d'import
+                        </label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="import_mode" id="mode_file" value="file" checked>
+                            <label class="btn btn-outline-primary" for="mode_file">
+                                <i class="fas fa-file-upload"></i> Fichier local
+                            </label>
+                            
+                            <input type="radio" class="btn-check" name="import_mode" id="mode_url" value="url">
+                            <label class="btn btn-outline-primary" for="mode_url">
+                                <i class="fas fa-link"></i> URL de téléchargement
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <form method="POST" action="{{ url_for('main.upload_gtfs') }}" enctype="multipart/form-data" id="gtfs-form">
+                        <!-- Mode fichier local -->
+                        <div id="file-mode" class="import-mode">
+                            <div class="mb-3">
+                                <label for="gtfs_file" class="form-label">
+                                    <i class="fas fa-file-archive"></i> Sélectionner un fichier GTFS (ZIP)
+                                </label>
+                                <input type="file" class="form-control" id="gtfs_file" name="gtfs_file" accept=".zip">
+                                <div class="form-text">
+                                    Formats acceptés : ZIP contenant les fichiers GTFS (.txt)
+                                    <br>Le fichier sera associé au projet <strong>{{ session.current_project.trigramme }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Mode URL -->
+                        <div id="url-mode" class="import-mode" style="display: none;">
+                            <div class="mb-3">
+                                <label for="gtfs_url" class="form-label">
+                                    <i class="fas fa-globe"></i> URL du fichier GTFS
+                                </label>
+                                <input type="url" class="form-control" name="gtfs_url" id="gtfs_url" 
+                                    placeholder="https://example.com/gtfs.zip">
+                                <div class="form-text">
+                                    URL directe vers un fichier ZIP GTFS (ex: open data, GitHub, etc.)
+                                    <br>Le fichier sera téléchargé et associé au projet <strong>{{ session.current_project.trigramme }}</strong>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <input type="hidden" name="import_type" id="import_type" value="file">
+                        
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-download"></i> <span id="submit-text">Charger le GTFS</span>
+                        </button>
+                    </form>
+                    
+                    <div class="mt-4">
+                        <h6>{% if session.current_project.is_sandbox %}Mode Sandbox{% else %}Mode Projet{% endif %}</h6>
+                        <p class="text-muted">
+                            {% if session.current_project.is_sandbox %}
+                                Mode sandbox activé. Votre fichier GTFS sera analysé temporairement 
+                                et supprimé à la fin de votre session.
+                            {% else %}
+                                Mode projet activé. Les résultats d'audit seront sauvegardés 
+                                et associés au projet <strong>{{ session.current_project.trigramme }}</strong>.
+                            {% endif %}
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Toggle entre les 2 modes d'import
+document.querySelectorAll('input[name="import_mode"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const fileMode = document.getElementById('file-mode');
+        const urlMode = document.getElementById('url-mode');
+        const importType = document.getElementById('import_type');
+        const submitText = document.getElementById('submit-text');
+        const gtfsFile = document.getElementById('gtfs_file');
+        const gtfsUrl = document.getElementById('gtfs_url');
+        
+        if (this.value === 'file') {
+            fileMode.style.display = 'block';
+            urlMode.style.display = 'none';
+            importType.value = 'file';
+            submitText.innerHTML = '<i class="fas fa-upload"></i> Charger le GTFS';
+            gtfsFile.required = true;
+            gtfsUrl.required = false;
+        } else {
+            fileMode.style.display = 'none';
+            urlMode.style.display = 'block';
+            importType.value = 'url';
+            submitText.innerHTML = '<i class="fas fa-download"></i> Télécharger le GTFS';
+            gtfsFile.required = false;
+            gtfsUrl.required = true;
+        }
+    });
+});
+</script>
+{% endblock %}

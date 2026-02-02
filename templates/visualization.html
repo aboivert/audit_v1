@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Visualisations - GTFS Audit Tool{% endblock %}
+
+{% block content %}
+<h2 class="mb-4"><i class="fas fa-chart-line"></i> Visualisations GTFS</h2>
+
+{% for category, viz_functions in visualizations.items() %}
+    <div class="file-type-section">
+        <div class="file-type-header">
+            <h4 class="mb-0">
+                <i class="fas fa-chart-area"></i> {{ category.title() }}
+            </h4>
+        </div>
+        
+        {% for viz in viz_functions %}
+            <div class="audit-card">
+                <div class="audit-header" onclick="toggleVisualization('{{ category }}_{{ viz.function_name }}')">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>{{ viz.name }}</strong>
+                            <div class="text-muted small">{{ viz.description }}</div>
+                        </div>
+                        <i class="fas fa-chevron-down" id="icon_{{ category }}_{{ viz.function_name }}"></i>
+                    </div>
+                </div>
+                
+                <div class="audit-body" id="body_{{ category }}_{{ viz.function_name }}">
+                    <!-- Paramètres -->
+                    {% if viz.parameters %}
+                        <div class="mb-3">
+                            <h6>Paramètres</h6>
+                            {% for param_name, param_config in viz.parameters.items() %}
+                                <div class="parameter-control">
+                                    <label class="form-label">{{ param_config.description or param_name }}</label>
+                                    
+                                    {% if param_config.type == 'slider' %}
+                                        <div class="d-flex align-items-center">
+                                            <input type="range" 
+                                                   class="form-range me-3" 
+                                                   id="{{ category }}_{{ viz.function_name }}_{{ param_name }}"
+                                                   min="{{ param_config.min }}" 
+                                                   max="{{ param_config.max }}" 
+                                                   value="{{ param_config.default }}"
+                                                   oninput="updateSliderValue('{{ category }}_{{ viz.function_name }}_{{ param_name }}')">
+                                            <span id="{{ category }}_{{ viz.function_name }}_{{ param_name }}_value" class="badge bg-secondary">
+                                                {{ param_config.default }}
+                                            </span>
+                                        </div>
+                                    
+                                    {% elif param_config.type == 'checkbox' %}
+                                        <div class="form-check">
+                                            <input type="checkbox" 
+                                                   class="form-check-input" 
+                                                   id="{{ category }}_{{ viz.function_name }}_{{ param_name }}"
+                                                   {% if param_config.default %}checked{% endif %}>
+                                            <label class="form-check-label">
+                                                {{ param_config.description or param_name }}
+                                            </label>
+                                        </div>
+                                    
+                                    {% elif param_config.type == 'select' %}
+                                        <select class="form-select" 
+                                                id="{{ category }}_{{ viz.function_name }}_{{ param_name }}">
+                                            {% for option in param_config.options %}
+                                                <option value="{{ option }}" 
+                                                        {% if option == param_config.default %}selected{% endif %}>
+                                                    {{ option }}
+                                                </option>
+                                            {% endfor %}
+                                        </select>
+                                    
+                                    {% elif param_config.type == 'multiselect' %}
+                                        <select class="form-select" 
+                                                id="{{ category }}_{{ viz.function_name }}_{{ param_name }}"
+                                                multiple
+                                                data-source="{{ param_config.get('source', '') }}">
+                                            <option value="">Chargement...</option>
+                                        </select>
+                                        <div class="form-text">Maintenez Ctrl/Cmd pour sélectionner plusieurs options</div>
+                                    
+                                    {% elif param_config.type == 'date' %}
+                                        <input type="date" 
+                                               class="form-control" 
+                                               id="{{ category }}_{{ viz.function_name }}_{{ param_name }}"
+                                               value="{{ param_config.default or '' }}">
+                                    
+                                    {% elif param_config.type == 'text' %}
+                                        <input type="text" 
+                                               class="form-control" 
+                                               id="{{ category }}_{{ viz.function_name }}_{{ param_name }}"
+                                               value="{{ param_config.default or '' }}">
+                                    {% endif %}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+                    
+                    <!-- Bouton de génération -->
+                    <button class="btn btn-success" 
+                            onclick="runVisualization('{{ category }}', '{{ viz.function_name }}')">
+                        <i class="fas fa-chart-line"></i> Générer la visualisation
+                    </button>
+                    
+                    <!-- Zone d'affichage du graphique -->
+                    <div class="mt-4" id="chart_{{ category }}_{{ viz.function_name }}" style="display: none;">
+                        <h6>Résultat</h6>
+                        <div class="border rounded p-2" id="chart_content_{{ category }}_{{ viz.function_name }}">
+                            <!-- Le graphique Plotly sera inséré ici -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endfor %}
+
+{% if not visualizations %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        Aucune fonction de visualisation n'a été trouvée. Vérifiez que vos fonctions sont bien décorées avec @visualization_function.
+    </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Fonctions communes (similaires aux audits)
+function toggleVisualization(vizId) {
+    const body = document.getElementById('body_' + vizId);
+    const icon = document.getElementById('icon_' + vizId);
+    
+    if (body.classList.contains('show')) {
+        body.classList.remove('show');
+        icon.classList.remove('fa-chevron-up');
+        icon.classList.add('fa-chevron-down');
+    } else {
+        body.classList.add('show');
+        icon.classList.remove('fa-chevron-down');
+        icon.classList.add('fa-chevron-up');
+        
+        // Charger les options dynamiques pour les multiselect
+        loadDynamicOptions(vizId);
+    }
+}
+
+function updateSliderValue(sliderId) {
+    const slider = document.getElementById(sliderId);
+    const valueSpan = document.getElementById(sliderId + '_value');
+    valueSpan.textContent = slider.value;
+}
+
+function loadDynamicOptions(vizId) {
+    // Charger les options pour les multiselect avec source dynamique
+    const multiselects = document.querySelectorAll(`#body_${vizId} select[data-source]`);
+    
+    multiselects.forEach(select => {
+        const source = select.getAttribute('data-source');
+        if (source && select.options.length <= 1) {
+            fetch(`/api/visualization/options/${source}`)
+                .then(response => response.json())
+                .then(data => {
+                    select.innerHTML = '<option value="">-- Toutes --</option>';
+                    if (data[source]) {
+                        data[source].forEach(option => {
+                            const opt = document.createElement('option');
+                            opt.value = option.value;
+                            opt.textContent = option.label;
+                            select.appendChild(opt);
+                        });
+                    }
+                })
+                .catch(error => {
+                    console.error('Erreur lors du chargement des options:', error);
+                    select.innerHTML = '<option value="">Erreur de chargement</option>';
+                });
+        }
+    });
+}
+
+function getVisualizationParameters(category, functionName) {
+    const parameters = {};
+    const elements = document.querySelectorAll(`[id^="${category}_${functionName}_"]:not([id*="_value"])`);
+    
+    elements.forEach(element => {
+        // ✅ CORRIGER - Enlever le préfixe complet
+        const fullId = element.id;
+        const prefix = `${category}_${functionName}_`;
+        const paramName = fullId.replace(prefix, ''); // Au lieu de split
+        
+        console.log(`Element ID: ${fullId}, Param name: ${paramName}`); // Debug
+        
+        if (element.type === 'range' || element.type === 'text' || element.type === 'date') {
+            parameters[paramName] = element.type === 'range' ? parseFloat(element.value) : element.value;
+        } else if (element.type === 'checkbox') {
+            parameters[paramName] = element.checked;
+        } else if (element.tagName === 'SELECT') {
+            if (element.multiple) {
+                parameters[paramName] = Array.from(element.selectedOptions)
+                    .map(option => option.value)
+                    .filter(value => value !== '');
+            } else {
+                parameters[paramName] = element.value;
+            }
+        }
+    });
+    
+    console.log('Paramètres finaux:', parameters); // Debug
+    return parameters;
+}
+
+function runVisualization(category, functionName) {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Génération...';
+    
+    const parameters = getVisualizationParameters(category, functionName);
+    
+    fetch('/api/visualization/run', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            category: category,
+            function_name: functionName,
+            parameters: parameters
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const chartContainer = document.getElementById(`chart_${category}_${functionName}`);
+        const chartContent = document.getElementById(`chart_content_${category}_${functionName}`);
+        
+    if (data.success) {
+        chartContent.innerHTML = data.html;
+        chartContainer.style.display = 'block';
+        
+        // ✅ Forcer l'exécution des scripts
+        const scripts = chartContent.getElementsByTagName('script');
+        for (let i = 0; i < scripts.length; i++) {
+            const script = scripts[i];
+            const newScript = document.createElement('script');
+            if (script.src) {
+                newScript.src = script.src;
+            } else {
+                newScript.innerHTML = script.innerHTML;
+            }
+            document.body.appendChild(newScript);
+        }
+        
+        chartContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            chartContent.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            chartContainer.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        // ... reste du catch
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
+}
+</script>
+{% endblock %}

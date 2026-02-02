@@ -1,0 +1,33 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Test Chart</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
+    <body>
+        <h2>Test Chart Export</h2>
+        <div style="width: 800px; height: 400px;">
+            <canvas id="myChart"></canvas>
+        </div>
+        <script>
+        const ctx = document.getElementById('myChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Route A', 'Route B', 'Route C'],
+                datasets: [{
+                    label: 'Trajets',
+                    data: [12, 19, 8],
+                    backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56']
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+        </script>
+    </body>
+    </html>
+    

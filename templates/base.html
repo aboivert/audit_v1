@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GTFS Audit Tool{% endblock %}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://unpkg.com/plotly.js-dist@latest/plotly.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .audit-card {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        .audit-header {
+            background-color: #f8f9fa;
+            padding: 12px 15px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+        }
+        .audit-body {
+            padding: 15px;
+            display: none;
+        }
+        .audit-body.show {
+            display: block;
+        }
+        .score-badge {
+            font-size: 0.9em;
+            padding: 4px 8px;
+        }
+        .score-excellent { background-color: #198754; }
+        .score-good { background-color: #20c997; }
+        .score-warning { background-color: #ffc107; color: #000; }
+        .score-danger { background-color: #dc3545; }
+        .parameter-control {
+            margin-bottom: 10px;
+        }
+        .results-container {
+            margin-top: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            display: none;
+        }
+        .file-type-section {
+            margin-bottom: 30px;
+        }
+        .file-type-header {
+            background: linear-gradient(90deg, #007bff, #0056b3);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        /* Nouveaux styles pour l'encart projet amélioré */
+        .project-info {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            padding: 0.75rem;
+            font-size: 0.8rem;
+            min-width: 220px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        
+        .project-label {
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.2rem;
+        }
+        
+        .project-value {
+            color: #212529;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        
+        .coverage-badge {
+            font-size: 0.65rem;
+            padding: 0.2rem 0.4rem;
+        }
+        
+        /* Animation pour le bouton admin */
+        .admin-btn:hover {
+            transform: rotate(90deg);
+            transition: transform 0.3s ease;
+        }
+        
+        /* Style pour le brand centré */
+        .navbar-brand {
+            font-size: 1.5rem;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            margin-left: 180px; /* ou plus selon ton goût */
+
+        }
+        
+        /* Amélioration des boutons groupés */
+        .btn-group .btn {
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .btn-group .btn:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <!-- Brand à gauche -->
+            <a class="navbar-brand fw-bold" href="{{ url_for('main.index') }}">
+                <i class="fas fa-bus"></i> GTFS Audit Tool
+            </a>
+            
+            <!-- Menu principal -->
+            <div class="navbar-nav">
+                <a class="nav-link" href="{{ url_for('main.index') }}">
+                    <i class="fas fa-home"></i> Accueil
+                </a>
+                {% if session.gtfs_loaded %}
+                <a class="nav-link" href="{{ url_for('statistics.statistics_page') }}">
+                    <i class="fas fa-chart-line"></i> Contenu du GTFS
+                </a>
+                <a class="nav-link" href="{{ url_for('audit.audit_page') }}">
+                    <i class="fas fa-search"></i> Audit
+                </a>
+                <a class="nav-link" href="{{ url_for('visualization.visualization_page') }}">
+                    <i class="fas fa-chart-bar"></i> Visualisations
+                </a>
+                {% endif %}
+            </div>
+            
+            <!-- Section droite avec infos projet et actions -->
+            <div class="d-flex align-items-center ms-auto">
+                {% if session.gtfs_loaded and session.current_project %}
+                <!-- Encart informations projet amélioré -->
+                <div class="project-info me-3 shadow-sm">
+                    <div class="row g-2">
+                        <div class="col-7">
+                            <div class="project-label">
+                                <i class="fas fa-folder-open me-1"></i>Projet
+                            </div>
+                            <div class="project-value text-truncate">{{ session.current_project.nom_projet or 'Projet sans nom' }}</div>
+                        </div>
+                        <div class="col-5 text-end">
+                            <span class="badge bg-primary px-2 py-1">{{ session.current_project.trigramme or 'N/A' }}</span>
+                            {% if session.current_project.coverage %}
+                            <span class="badge coverage-badge bg-success mt-1">{{ session.current_project.coverage }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-12">
+                            <div class="project-label">
+                                <i class="fas fa-file-archive me-1"></i>Fichier
+                            </div>
+                            <div class="project-value text-truncate">{{ session.gtfs_filename or 'gtfs.zip' }}</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Boutons d'action -->
+                <div class="btn-group me-2" role="group">
+                    <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.clear_session') }}" title="Changer de projet">
+                        <i class="fas fa-exchange-alt"></i>
+                    </a>
+                    <a class="btn btn-outline-light btn-sm admin-btn" href="/admin" title="Administration">
+                        <i class="fas fa-cog"></i>
+                    </a>
+                </div>
+                {% else %}
+                <!-- Si pas de projet chargé, juste le bouton admin -->
+                <a class="btn btn-outline-light btn-sm admin-btn" href="/admin" title="Administration">
+                    <i class="fas fa-cog"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Messages flash -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

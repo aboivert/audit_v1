@@ -1,0 +1,11 @@
+Flask==3.0.0
+pandas==2.1.4
+Werkzeug==3.0.1
+plotly==5.17.0
+Flask-SQLAlchemy==3.0.5
+requests==2.31.0
+chardet
+geopy
+shapely
+reportlab>=3.6.0
+matplotlib>=3.5.0

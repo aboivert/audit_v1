@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block title %}Administration - GTFS Audit Tool{% endblock %}
+
+
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-cog"></i> Administration des Projets
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button class="btn btn-primary" data-bs-toggle="collapse" data-bs-target="#createProjectForm">
+            <i class="fas fa-plus"></i> Nouveau Projet
+        </button>
+        <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary ms-2">
+            <i class="fas fa-arrow-left"></i> Retour à l'accueil
+        </a>
+    </div>
+</div>
+
+<!-- Formulaire de création (collapsible) -->
+<div class="collapse mb-4" id="createProjectForm">
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-plus"></i> Créer un Nouveau Projet
+            </h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.create_project') }}">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="nom_projet" class="form-label">
+                                <i class="fas fa-tag"></i> Nom du Projet *
+                            </label>
+                            <input type="text" class="form-control" id="nom_projet" name="nom_projet" 
+                                   required maxlength="255" placeholder="Ex: Transport Métropole Lyon">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="mb-3">
+                            <label for="trigramme" class="form-label">
+                                <i class="fas fa-hashtag"></i> Trigramme *
+                            </label>
+                            <input type="text" class="form-control" id="trigramme" name="trigramme" 
+                                   required maxlength="3" minlength="3" style="text-transform: uppercase;"
+                                   placeholder="Ex: TML">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="coverage" class="form-label">
+                                <i class="fas fa-map"></i> Coverage
+                            </label>
+                            <input type="text" class="form-control" id="coverage" name="coverage" 
+                                   maxlength="255" placeholder="Zone géographique">
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="mb-3">
+                            <label class="form-label">&nbsp;</label>
+                            <div>
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save"></i> Créer
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Statistiques -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-primary">{{ projects|length }}</h5>
+                <p class="card-text">Projets Total</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-success">{{ projects|selectattr('is_sandbox', 'equalto', false)|list|length }}</h5>
+                <p class="card-text">Projets Actifs</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-info">{{ projects|selectattr('is_sandbox', 'equalto', true)|list|length }}</h5>
+                <p class="card-text">Sandbox</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h5 class="card-title text-warning">
+                    {% if session.current_project %}
+                        {{ session.current_project.trigramme }}
+                    {% else %}
+                        Aucun
+                    {% endif %}
+                </h5>
+                <p class="card-text">Projet Actuel</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Données du projet actif -->
+{% if session.current_project %}
+<!-- Configurations d'audit -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-cogs"></i> Configurations d'Audit
+                    <span class="badge bg-primary">{{ session.current_project.trigramme }}</span>
+                </h5>
+                <button class="btn btn-success btn-sm" data-bs-toggle="collapse" data-bs-target="#createConfigForm">
+                    <i class="fas fa-plus"></i> Nouvelle Configuration
+                </button>
+            </div>
+            
+            <!-- Formulaire de création (collapsible) -->
+            <div class="collapse" id="createConfigForm">
+                <div class="card-body border-bottom">
+                    <form method="POST" action="{{ url_for('admin.create_config') }}">
+                        <div class="row">
+                            <div class="col-md-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="conf_agency_completion_url" name="conf_agency_completion_url">
+                                    <label class="form-check-label" for="conf_agency_completion_url">
+                                        agency_completion_url
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="conf_agency_completion_phone" name="conf_agency_completion_phone">
+                                    <label class="form-check-label" for="conf_agency_completion_phone">
+                                        agency_completion_phone
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="conf_routes_validate_route_colors" name="conf_routes_validate_route_colors">
+                                    <label class="form-check-label" for="conf_routes_validate_route_colors">
+                                        routes_validate_route_colors
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-save"></i> Créer
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <div class="card-body">
+                {% if current_project_configs %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Fonctions Activées</th>
+                                    <th width="100">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for config in current_project_configs %}
+                                <tr>
+                                    <td>{{ config.date_configuration.strftime('%d/%m/%Y %H:%M') }}</td>
+                                    <td>
+                                        {% if config.conf_agency_completion_url %}<span class="badge bg-success me-1">Agency - complétion URL</span>{% endif %}
+                                        {% if config.conf_agency_completion_phone %}<span class="badge bg-success me-1">Agency - complétion téléphone</span>{% endif %}
+                                        {% if config.conf_routes_validate_route_colors %}<span class="badge bg-success me-1">Routes - couleurs de routes</span>{% endif %}
+                                    </td>
+                                    <td>
+                                        <form method="POST" action="{{ url_for('admin.delete_config', config_id=config.config_id) }}" 
+                                              style="display: inline;" 
+                                              onsubmit="return confirm('Supprimer cette configuration ?')">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm" title="Supprimer">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">Aucune configuration d'audit pour ce projet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Résultats d'audit -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line"></i> Résultats d'Audit
+                    <span class="badge bg-primary">{{ session.current_project.trigramme }}</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if current_project_results %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Scores</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for result in current_project_results %}
+                                <tr>
+                                    <td>{{ result.date_audit.strftime('%d/%m/%Y %H:%M') }}</td>
+                                    <td>
+                                        {% if result.score_agency_completion_url %}<span class="badge bg-info me-1">score_agency_completion_url:{{ "%.1f"|format(result.score_agency_completion_url) }}</span>{% endif %}
+                                        {% if result.score_agency_completion_phone %}<span class="badge bg-info me-1">score_agency_completion_phone:{{ "%.1f"|format(result.score_agency_completion_phone) }}</span>{% endif %}
+                                        {% if result.score_routes_validate_route_colors %}<span class="badge bg-info me-1">score_routes_validate_route_colors:{{ "%.1f"|format(result.score_routes_validate_route_colors) }}</span>{% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted">Aucun résultat d'audit pour ce projet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% else %}
+<!-- Message si aucun projet sélectionné -->
+<div class="alert alert-warning mb-4">
+    <i class="fas fa-exclamation-triangle"></i>
+    <strong>Aucun projet sélectionné</strong> - Veuillez d'abord sélectionner un projet depuis la <a href="{{ url_for('main.index') }}">page d'accueil</a> pour voir les configurations et résultats d'audit.
+</div>
+{% endif %}
+
+<!-- Filtre par Coverage -->
+<div class="row mb-3">
+    <div class="col-md-4">
+        <form method="GET" action="{{ url_for('admin.admin_page') }}">
+            <div class="input-group">
+                <select class="form-select" name="coverage_filter" onchange="this.form.submit()">
+                    <option value="">Tous les projets ({{ all_projects|length }})</option>
+                    <option value="sans_coverage" {% if selected_coverage == 'sans_coverage' %}selected{% endif %}>
+                        Sans coverage ({{ all_projects|selectattr('coverage', 'equalto', none)|list|length }})
+                    </option>
+                    {% for coverage in coverages_list %}
+                        <option value="{{ coverage }}" {% if selected_coverage == coverage %}selected{% endif %}>
+                            {{ coverage }} ({{ all_projects|selectattr('coverage', 'equalto', coverage)|list|length }})
+                        </option>
+                    {% endfor %}
+                </select>
+                {% if selected_coverage %}
+                    <a href="{{ url_for('admin.admin_page') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times"></i>
+                    </a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Tableau des projets -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-list"></i> Liste des Projets
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Trigramme</th>
+                        <th>Nom du Projet</th>
+                        <th>Coverage</th>
+                        <th>Type</th>
+                        <th>Créé le</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for project in projects %}
+                    <tr {% if project.is_sandbox %}class="table-info"{% endif %}
+                        {% if session.current_project and session.current_project.id == project.project_id %}style="background-color: #e7f3ff;"{% endif %}>
+                        <td>{{ project.project_id}}</td>
+                        <td>
+                            <span class="badge bg-primary">{{ project.trigramme }}</span>
+                            {% if session.current_project and session.current_project.id == project.project_id %}
+                                <i class="fas fa-check-circle text-success ms-1" title="Projet actuel"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if edit_project and edit_project.project_id == project.project_id %}
+                                <!-- Formulaire d'édition inline -->
+                                <form method="POST" action="{{ url_for('admin.edit_project', project_id=project.project_id) }}" class="row g-2">
+                                    <div class="col-12">
+                                        <input type="text" class="form-control form-control-sm" name="nom_projet" 
+                                               value="{{ project.nom_projet }}" required maxlength="255">
+                                    </div>
+                                </form>
+                            {% else %}
+                                {{ project.nom_projet }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if edit_project and edit_project.project_id == project.project_id %}
+                                <input type="text" class="form-control form-control-sm" name="coverage" 
+                                       value="{{ project.coverage or '' }}" maxlength="255" form="edit-form-{{ project.project_id }}">
+                            {% else %}
+                                {{ project.coverage or '-' }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if project.is_sandbox %}
+                                <span class="badge bg-info">Sandbox</span>
+                            {% else %}
+                                <span class="badge bg-success">Projet</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if project.date_creation %}
+                                {{ project.date_creation.strftime('%d/%m/%Y') }}<br>
+                                <small class="text-muted">{{ project.date_creation.strftime('%H:%M') }}</small>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if edit_project and edit_project.project_id == project.project_id %}
+                                <!-- Boutons d'édition active -->
+                                <div class="btn-group btn-group-sm">
+                                    <button type="submit" class="btn btn-success" form="edit-form-{{ project.project_id }}">
+                                        <i class="fas fa-save"></i>
+                                    </button>
+                                    <a href="{{ url_for('admin.admin_page') }}" class="btn btn-secondary">
+                                        <i class="fas fa-times"></i>
+                                    </a>
+                                </div>
+                                <!-- Formulaire caché pour l'édition -->
+                                <form id="edit-form-{{ project.project_id }}" method="POST" action="{{ url_for('admin.edit_project', project_id=project.project_id) }}" style="display: none;">
+                                    <input type="hidden" name="nom_projet" value="{{ project.nom_projet }}">
+                                    <input type="hidden" name="trigramme" value="{{ project.trigramme }}">
+                                    <input type="hidden" name="coverage" value="{{ project.coverage or '' }}">
+                                </form>
+                            {% else %}
+                                <!-- Boutons normaux -->
+                                <div class="btn-group btn-group-sm" role="group">
+                                    {% if not project.is_sandbox %}
+                                        <a href="{{ url_for('admin.admin_page', edit_id=project.project_id) }}" 
+                                           class="btn btn-outline-primary" title="Modifier">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        <form method="POST" action="{{ url_for('admin.delete_project', project_id=project.project_id) }}" 
+                                              style="display: inline;" 
+                                              onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer le projet {{ project.nom_projet }} ?')">
+                                            <button type="submit" class="btn btn-outline-danger" title="Supprimer">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <span class="text-muted small">Non modifiable</span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% if edit_project and edit_project.project_id == project.project_id %}
+                    <!-- Ligne d'édition complète -->
+                    <tr class="table-warning">
+                        <td colspan="7">
+                            <form method="POST" action="{{ url_for('admin.edit_project', project_id=project.project_id) }}" class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Nom du projet *</label>
+                                    <input type="text" class="form-control" name="nom_projet" 
+                                           value="{{ project.nom_projet }}" required maxlength="255">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">Trigramme *</label>
+                                    <input type="text" class="form-control" name="trigramme" 
+                                           value="{{ project.trigramme }}" required maxlength="3" minlength="3" style="text-transform: uppercase;">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Coverage</label>
+                                    <input type="text" class="form-control" name="coverage" 
+                                           value="{{ project.coverage or '' }}" maxlength="255">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label">&nbsp;</label>
+                                    <div>
+                                        <button type="submit" class="btn btn-success">
+                                            <i class="fas fa-save"></i> Sauvegarder
+                                        </button>
+                                        <a href="{{ url_for('admin.admin_page') }}" class="btn btn-secondary ms-1">
+                                            <i class="fas fa-times"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-uppercase pour les trigrammes
+document.addEventListener('DOMContentLoaded', function() {
+    const trigrammeInputs = document.querySelectorAll('input[name="trigramme"]');
+    trigrammeInputs.forEach(function(input) {
+        input.addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+    });
+});
+</script>
+{% endblock %}

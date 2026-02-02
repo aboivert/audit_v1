@@ -1,0 +1,3092 @@
+{% extends "base.html" %}
+
+{% block title %}Audit GTFS - {{ project.name if project else 'Aucun projet' }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- En-tête -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2 class="mb-1">
+                        <i class="fas fa-search text-primary me-2"></i>
+                        Audit GTFS
+                    </h2>
+                    {% if project %}
+                        <p class="text-muted mb-0">Projet : <strong>{{ project.name }}</strong></p>
+                    {% endif %}
+                </div>
+                
+                {% if gtfs_info %}
+                <div>
+                    <button class="btn btn-success me-2" id="runAllAudits">
+                        <i class="fas fa-play me-1"></i>
+                        Lancer tous les audits
+                    </button>
+                    <button class="btn btn-outline-secondary" id="clearResults">
+                        <i class="fas fa-trash me-1"></i>
+                        Effacer les résultats
+                    </button>
+                    <button class="btn btn-info me-2" id="exportAudits" disabled>
+                        <i class="fas fa-download me-1"></i>
+                        Exporter les audits
+                    </button>
+                    <button class="btn btn-primary me-2" onclick="generatePDF()">
+                        <i class="fas fa-file-pdf me-1"></i>
+                        Générer rapport PDF
+                    </button>
+
+                    <script>
+                    function generatePDF() {
+                        window.open(`/audit/{{ project.project_id }}/report/pdf`, '_blank');
+                    }
+                    </script>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if error %}
+        <!-- Message d'erreur -->
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    {{ error }}
+                </div>
+            </div>
+        </div>
+    {% elif not gtfs_info %}
+        <!-- Aucune donnée GTFS -->
+        <div class="row">
+            <div class="col-12">
+                <div class="alert alert-info" role="alert">
+                    <h5><i class="fas fa-info-circle me-2"></i>Aucune donnée GTFS disponible</h5>
+                    <p class="mb-0">Veuillez d'abord importer un fichier GTFS dans l'onglet Administration.</p>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <!-- Interface principale d'audit -->
+        <div class="row">
+            <!-- Colonne gauche : Liste des fichiers -->
+            <div class="col-md-4 col-lg-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-file-alt me-2"></i>
+                            Fichiers GTFS
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush" id="filesList">
+                            {% for file_type in gtfs_files %}
+                                {% if file_type in gtfs_info %}
+                                    <div class="list-group-item list-group-item-action gtfs-file-item" 
+                                         data-file-type="{{ file_type }}">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-1">{{ file_type }}</h6>
+                                                <small class="text-muted">
+                                                    {{ gtfs_info[file_type].rows }} lignes
+                                                </small>
+                                            </div>
+                                            <div class="text-end">
+                                                <span class="badge bg-secondary audit-status" id="status-{{ file_type }}">
+                                                    Non audité
+                                                </span>
+                                                <button class="btn btn-sm btn-outline-primary ms-2 audit-btn" 
+                                                        data-file-type="{{ file_type }}">
+                                                    <i class="fas fa-play"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Indicateur de chargement -->
+                                        <div class="progress mt-2 d-none loading-bar" id="loading-{{ file_type }}">
+                                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" 
+                                                role="progressbar" 
+                                                style="width: 0%; min-width: 2rem; transition: width 0.3s ease; font-size: 0.75em;">
+                                                0%
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% else %}
+                                    <div class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <h6 class="mb-1 text-muted">{{ file_type }}</h6>
+                                                <small class="text-muted">Fichier absent</small>
+                                            </div>
+                                            <span class="badge bg-light text-dark">
+                                                <i class="fas fa-minus"></i>
+                                            </span>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Résumé global -->
+                <div class="card mt-3 d-none" id="globalSummaryCard">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-chart-pie me-2"></i>
+                            Résumé global
+                        </h6>
+                    </div>
+                    <div class="card-body" id="globalSummaryContent">
+                        <!-- Contenu généré dynamiquement -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Colonne droite : Résultats d'audit -->
+            <div class="col-md-8 col-lg-9">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0" id="resultsTitle">
+                            <i class="fas fa-clipboard-list me-2"></i>
+                            Résultats d'audit
+                        </h5>
+                    </div>
+                    <div class="card-body" id="auditResults">
+                        <div class="d-flex align-items-center justify-content-center py-5">
+                            <div class="text-center text-muted">
+                                <i class="fas fa-clipboard-list fa-3x mb-3"></i>
+                                <h5>Sélectionnez un fichier pour commencer l'audit</h5>
+                                <p>Cliquez sur le bouton <i class="fas fa-play"></i> à côté d'un fichier GTFS</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+<script>
+// VERSION NETTOYÉE - REMPLACEZ TOUT LE CONTENU <script> PAR CECI :
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Variables globales
+    let auditResults = {};
+
+    checkDatabaseAuditStatus();
+    
+    // Éléments DOM
+    const auditButtons = document.querySelectorAll('.audit-btn');
+    const runAllButton = document.getElementById('runAllAudits');
+    const clearButton = document.getElementById('clearResults');
+    const exportButton = document.getElementById('exportAudits');
+    const resultsContainer = document.getElementById('auditResults');
+    const globalSummaryCard = document.getElementById('globalSummaryCard');
+    
+    // Event listeners
+    auditButtons.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const fileType = this.dataset.fileType;
+            runSingleAudit(fileType);
+        });
+    });
+    
+    if (runAllButton) {
+        runAllButton.addEventListener('click', runAllAudits);
+    }
+    
+    if (clearButton) {
+        clearButton.addEventListener('click', clearResults);
+    }
+
+    if (exportButton) {
+        exportButton.addEventListener('click', exportAuditResults);
+    }
+
+    document.querySelectorAll('.gtfs-file-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            // Éviter le conflit avec le bouton d'audit
+            if (e.target.closest('.audit-btn')) {
+                return;
+            }
+            
+            const fileType = this.dataset.fileType;
+            
+            // Vérifier si l'audit existe déjà
+            if (auditResults[fileType]) {
+                displayAuditResultWithScore(auditResults[fileType], fileType);
+            }
+        });
+    });
+
+    async function runSingleAudit(fileType) {
+        const button = document.querySelector(`[data-file-type="${fileType}"].audit-btn`);
+        const statusBadge = document.getElementById(`status-${fileType}`);
+        const loadingBar = document.getElementById(`loading-${fileType}`);
+        const progressBar = loadingBar.querySelector('.progress-bar');
+        
+        // État de chargement
+        button.disabled = true;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        statusBadge.className = 'badge bg-primary';
+        statusBadge.textContent = 'Initialisation...';
+        loadingBar.classList.remove('d-none');
+        
+        // Reset de la barre avec animation désactivée
+        progressBar.style.transition = 'none';
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+        
+        // Réactiver l'animation après un délai
+        setTimeout(() => {
+            progressBar.style.transition = 'width 0.5s ease-out';
+        }, 100);
+        
+        let lastProgress = 0;
+        
+        try {
+            // Démarrer l'audit
+            const auditPromise = fetch('/audit/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_type: fileType })
+            });
+            
+            // Polling de la progression avec gestion intelligente
+            const progressInterval = setInterval(async () => {
+                try {
+                    const progressResponse = await fetch(`/audit/progress/${fileType}`);
+                    const progressData = await progressResponse.json();
+                    
+                    if (progressResponse.ok) {
+                        const currentProgress = progressData.progress;
+                        
+                        // Ne mettre à jour que si la progression a vraiment changé
+                        if (currentProgress !== lastProgress) {
+                            // Animation fluide vers la nouvelle valeur
+                            progressBar.style.width = `${currentProgress}%`;
+                            progressBar.textContent = `${currentProgress}%`;
+                            lastProgress = currentProgress;
+                        }
+                        
+                        // Mettre à jour le message seulement s'il a changé
+                        if (statusBadge.textContent !== progressData.message) {
+                            statusBadge.textContent = progressData.message;
+                        }
+                        
+                        // Arrêter le polling si terminé ou en erreur
+                        if (progressData.step === 'complete' || progressData.step === 'error') {
+                            clearInterval(progressInterval);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Erreur progression:', e);
+                    // Ne pas arrêter le polling pour une erreur réseau ponctuelle
+                }
+            }, 500); // Réduit la fréquence à 500ms pour plus de fluidité
+            
+            const response = await auditPromise;
+            const result = await response.json();
+            clearInterval(progressInterval);
+            
+            if (response.ok) {
+                // Animation finale vers 100%
+                progressBar.style.width = '100%';
+                progressBar.textContent = '100%';
+                
+                // Traitement des résultats après un petit délai
+                setTimeout(() => {
+                    auditResults[fileType] = result;
+                    updateFileStatusWithScore(fileType, result);
+                    displayAuditResultWithScore(result, fileType);
+                    updateGlobalSummary();
+                }, 300);
+                
+            } else {
+                throw new Error(result.error || 'Erreur inconnue');
+            }
+            
+        } catch (error) {
+            console.error('Erreur audit:', error);
+            progressBar.style.width = '100%';
+            progressBar.className = 'progress-bar bg-danger';
+            progressBar.textContent = 'Erreur';
+            statusBadge.className = 'badge bg-danger';
+            statusBadge.textContent = 'Erreur';
+            displayErrorResult(fileType, error.message);
+            
+        } finally {
+            button.disabled = false;
+            button.innerHTML = '<i class="fas fa-play"></i>';
+            
+            // Cacher la barre après un délai plus long
+            setTimeout(() => {
+                loadingBar.classList.add('d-none');
+                // Reset pour la prochaine utilisation
+                progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary';
+                progressBar.style.transition = 'width 0.5s ease-out';
+            }, 3000);
+        }
+    }
+
+    // Mise à jour du statut avec score
+    function updateFileStatusWithScore(fileType, result) {
+        const statusBadge = document.getElementById(`status-${fileType}`);
+        
+        let overallStatus = 'unknown';
+        let score = null;
+        let grade = null;
+        
+        if (result.required_fields) {
+            overallStatus = result.required_fields.status;
+            score = result.required_fields.score;
+            grade = result.required_fields.grade;
+        } else if (result.status && result.score !== undefined) {
+            overallStatus = result.status;
+            score = result.score;
+            grade = result.grade;
+        } else if (result.summary?.overall_status) {
+            overallStatus = result.summary.overall_status;
+            score = result.score;
+        }
+        
+        if (score !== null && grade) {
+            statusBadge.innerHTML = `
+                <span class="me-1">${Math.round(score)}/100</span>
+                <span class="badge ${getGradeClass(grade)} me-1" style="font-size: 0.8em;">${grade}</span>
+                <span class="badge ${getStatusClass(overallStatus)}" style="font-size: 0.8em;">${overallStatus}</span>
+            `;
+            statusBadge.className = 'badge bg-light text-dark border audit-status';
+        } else if (score !== null) {
+            statusBadge.innerHTML = `${Math.round(score)}/100`;
+            statusBadge.className = `badge ${getScoreClass(score, score)} audit-status`;
+        } else {
+            const statusClass = getStatusClass(overallStatus);
+            statusBadge.className = `badge ${statusClass} audit-status`;
+            statusBadge.textContent = overallStatus;
+        }
+        const fileItem = document.querySelector(`[data-file-type="${fileType}"].gtfs-file-item`);
+        if (fileItem) {
+            fileItem.classList.add('has-results');
+        }
+    }
+
+    // Affichage des résultats avec score
+    function displayAuditResultWithScore(result, fileType) {
+        console.log('DEBUG - Résultat:', result); // DEBUG
+        
+        const title = document.getElementById('resultsTitle');
+        title.innerHTML = `
+            <i class="fas fa-clipboard-list me-2"></i>
+            Résultats d'audit - ${fileType.toUpperCase()}
+        `;
+        
+        let html = `
+            <div class="mb-4">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-info-circle me-2"></i>Informations générales</h6>
+                        <ul class="list-unstyled">
+                            <li><strong>Fichier :</strong> ${result.file || fileType}</li>
+                            <li><strong>Total lignes :</strong> ${result.total_rows || 'N/A'}</li>
+                            <li><strong>Audit :</strong> ${new Date(result.timestamp || Date.now()).toLocaleString()}</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6><i class="fas fa-chart-bar me-2"></i>Résumé</h6>
+        `;
+        
+        if (result.summary) {
+            const s = result.summary;
+            html += `
+                <div class="row g-2 mb-3">
+                    <div class="col-3"><div class="badge bg-success w-100">${s.passed_checks || 0} OK</div></div>
+                    <div class="col-3"><div class="badge bg-warning w-100">${s.warning_checks || 0} Warn</div></div>
+                    <div class="col-3"><div class="badge bg-danger w-100">${s.error_checks || 0} Err</div></div>
+                    <div class="col-3"><div class="badge bg-dark w-100">${s.critical_checks || 0} Crit</div></div>
+                </div>
+            `;
+        }
+        
+        html += `</div></div></div>`;
+        
+        // Générer les catégories
+        if (result.required_fields) {
+            html += generateCategoryHtml('Validation de la donnée', result.required_fields, 'danger');
+        }
+        if (result.data_format) {
+            html += generateCategoryHtml('Formattage de la donnée', result.data_format, 'info');
+        }
+        if (result.data_consistency) {
+            html += generateCategoryHtml('Cohérence des données', result.data_consistency, 'warning');
+        }
+
+        if (result.accessiblity) {
+            html += generateCategoryHtml('Accessibilité', result.accessiblity, 'success');
+        }
+
+        if (result.ufr_analysis) {
+            html += generateUfrAnalysisHtml(result.ufr_analysis);
+        }
+
+        if (result.hierarchy_analysis) {
+            html += generateHierarchyAnalysisHtml(result.hierarchy_analysis);
+        }
+
+        if (result.temporal_analysis) {
+            html += generateTemporalAnalysisHtml(result.temporal_analysis);
+        }
+
+        if (result.statistics) {
+            html += generateStatisticsCategoryHtml(result.statistics);
+        }
+        
+        // Autres sections
+        //if (result.fields_completion) {
+        //    html += generateDataCompletionCategoryHtml(result.fields_completion);
+        //}
+        //if (result.statistics && result.statistics.richness_analysis) {
+        //   html += generateRichnessAnalysisHtml(result.statistics.richness_analysis);
+        //}
+        //if (result.statistics && result.statistics.connectivity_analysis) {
+        //    html += generateConnectivityAnalysisHtml(result.statistics.connectivity_analysis);
+        //}
+        //if (result.statistics && result.statistics.global_completion) {
+        //    html += generateGlobalCompletionHtml(result.statistics.global_completion);
+        //}
+        
+        // NETTOYER AVANT D'INJECTER
+        resultsContainer.innerHTML = '';
+        
+        // INJECTER LE NOUVEAU HTML
+        resultsContainer.innerHTML = html;
+        
+        // FORCER LA MISE À JOUR DES BARRES - CRITIQUE !
+        setTimeout(() => {
+            forceUpdateAllProgressBars();
+        }, 200);
+    }
+
+    function generateCategoryHtml(title, category, iconType) {
+        console.log('generateCategoryHtml:', title, 'Score:', category.score, 'Percentage:', category.percentage);
+        
+        const statusClass = getStatusClass(category.status);
+        const iconClass = getIconClass(iconType);
+        
+        // Utiliser les scores calculés côté Python pour formattage et accessibilité
+        let validityScore = null;
+        let validityPercentage = null;
+        let validityGrade = null;
+        let validityStatus = category.status;
+
+        if ((title === 'Formattage de la donnée' || title === 'Accessibilité') && category.score !== undefined) {
+            // Score de validité calculé côté Python
+            validityScore = category.score;
+            validityPercentage = category.percentage;
+            validityGrade = category.grade;
+        }
+        
+        let titleHtml = `
+            <h6 class="mb-0">
+                <i class="fas ${iconClass} me-2"></i>
+                ${title}
+            </h6>
+        `;
+        
+        let scoreHtml = '';
+        
+        // Utiliser le score de validité pour data_format, sinon le score normal
+        if (validityScore !== null) {
+            // Score de validité pour data_format
+            const scoreClass = getScoreClass(validityScore, validityPercentage);
+            scoreHtml = `
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge ${scoreClass} score-badge">
+                        ${Math.round(validityScore)}/100
+                    </span>
+                    <span class="badge ${getGradeClass(validityGrade)} grade-badge">
+                        ${validityGrade}
+                    </span>
+                    <span class="badge ${getStatusClass(validityStatus)}">${validityStatus}</span>
+                </div>
+            `;
+        } else if (category.score !== undefined && category.grade !== undefined && category.percentage !== undefined) {
+            // Score normal pour les autres catégories
+            const scoreClass = getScoreClass(category.score, category.percentage);
+            scoreHtml = `
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge ${scoreClass} score-badge">
+                        ${Math.round(category.score)}/100
+                    </span>
+                    <span class="badge ${getGradeClass(category.grade)} grade-badge">
+                        ${category.grade}
+                    </span>
+                    <span class="badge ${statusClass}">${category.status}</span>
+                </div>
+            `;
+        } else {
+            scoreHtml = `<span class="badge ${statusClass}">${category.status}</span>`;
+        }
+        
+        let html = `
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    ${titleHtml}
+                    ${scoreHtml}
+                </div>
+        `;
+        
+        // BARRE DE PROGRESSION globale
+        let progressPercentage = category.percentage;
+        if (validityPercentage !== null) {
+            progressPercentage = validityPercentage; // Utiliser le % de validité pour data_format
+        }
+        
+        if (progressPercentage !== undefined) {
+            const progressClass = getProgressClass(progressPercentage);
+            const progressId = `progress-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const progressLabel = validityPercentage !== null ? 
+                `${Math.round(progressPercentage)}% de validité moyenne` : 
+                `${progressPercentage}% de conformité`;
+                
+            html += `
+                <div class="progress-container px-3 pb-2" style="padding-top: 0.5rem;">
+                    <div class="progress mb-2" style="height: 8px; background-color: #e9ecef;">
+                        <div class="progress-bar ${progressClass}" 
+                            id="${progressId}"
+                            role="progressbar" 
+                            style="width: 0% !important; transition: none !important;" 
+                            data-target-width="${progressPercentage}"
+                            aria-valuenow="${progressPercentage}" 
+                            aria-valuemin="0" 
+                            aria-valuemax="100">
+                        </div>
+                    </div>
+                    <small class="text-muted">${progressLabel}</small>
+                </div>
+            `;
+        }
+        
+        // Corps avec les checks
+        if (category.checks && category.checks.length > 0) {
+            html += `<div class="card-body">`;
+            
+            category.checks.forEach(check => {
+                const checkStatusClass = getStatusClass(check.status);
+                
+            html += `
+                <div class="border-start border-3 ps-3 mb-3" style="border-color: ${getStatusColor(check.status)} !important;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <h6 class="mb-0">${check.description}</h6>
+                            </div>
+                            <p class="mb-1 text-muted">${check.message}</p>
+                        </div>
+                        ${check.type ? getFieldTypeBadge(check.type) : `<span class="badge ${checkStatusClass} ms-2">${check.status}</span>`}
+                    </div>
+            `;
+                
+                // Barre de progression pour data_format
+                if (check.statistics) {
+                    html += generateFormatProgressBar(check.statistics);
+                }
+                
+                // Bouton détails
+                if (check.details && Object.keys(check.details).length > 0) {
+                    const detailsId = `details-${check.check_name}-${Math.random().toString(36).substr(2, 9)}`;
+                    html += `
+                        <button class="btn btn-sm btn-outline-secondary mt-2 details-toggle" 
+                                data-target="${detailsId}">
+                            <i class="fas fa-chevron-down me-1"></i>Voir détails
+                        </button>
+                        <div class="details-content mt-2 d-none" id="${detailsId}">
+                            <div class="card bg-light">
+                                <div class="card-body p-3">
+                                    ${generateDetailsHtml(check.details)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                html += `</div>`;
+            });
+            html += `</div>`;
+        }
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateStatisticsCategoryHtml(statistics) {
+        let html = `
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>
+                        Statistiques
+                    </h6>
+                </div>
+                <div class="card-body">
+        `;
+        
+        // Parcourir toutes les statistiques
+        Object.entries(statistics).forEach(([statType, statData]) => {
+            if (statType === 'repartition') {
+                html += generateRepartitionHtml(statData);
+            }
+            // Vous pourrez ajouter d'autres types de statistiques ici
+        });
+        
+        html += `
+                </div>
+            </div>
+        `;
+        
+        return html;
+    }
+
+    function generateUfrAnalysisHtml(ufrData) {
+        const statusClass = getStatusClass(ufrData.status);
+        const iconClass = 'fa-wheelchair';
+        
+        let html = `
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas ${iconClass} me-2"></i>
+                        Accessibilité UFR
+                    </h6>
+        `;
+        
+        // Score et statut (même format que les autres)
+        if (ufrData.score !== undefined && ufrData.grade !== undefined) {
+            const scoreClass = getScoreClass(ufrData.score, ufrData.percentage);
+            html += `
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge ${scoreClass} score-badge">
+                        ${Math.round(ufrData.score)}/100
+                    </span>
+                    <span class="badge ${getGradeClass(ufrData.grade)} grade-badge">
+                        ${ufrData.grade}
+                    </span>
+                    <span class="badge ${statusClass}">${ufrData.status}</span>
+                </div>
+            `;
+        } else {
+            html += `<span class="badge ${statusClass}">${ufrData.status}</span>`;
+        }
+        
+        html += `</div>`;
+        
+        // Barre de progression globale
+        if (ufrData.percentage !== undefined) {
+            const progressClass = getProgressClass(ufrData.percentage);
+            const progressId = `progress-ufr-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            html += `
+                <div class="progress-container px-3 pb-2" style="padding-top: 0.5rem;">
+                    <div class="progress mb-2" style="height: 8px; background-color: #e9ecef;">
+                        <div class="progress-bar ${progressClass}" 
+                            id="${progressId}"
+                            role="progressbar" 
+                            style="width: 0% !important; transition: none !important;" 
+                            data-target-width="${ufrData.percentage}"
+                            aria-valuenow="${ufrData.percentage}" 
+                            aria-valuemin="0" 
+                            aria-valuemax="100">
+                        </div>
+                    </div>
+                    <small class="text-muted">Score UFR global : ${ufrData.percentage}%</small>
+                </div>
+            `;
+        }
+        
+        html += `<div class="card-body">`;
+        
+        // 1. VALIDATION TECHNIQUE
+        if (ufrData.technical_validation) {
+            html += generateUfrTechnicalValidation(ufrData.technical_validation);
+        }
+        
+        // 2. MÉTRIQUES MÉTIER
+        if (ufrData.business_metrics) {
+            html += generateUfrBusinessMetrics(ufrData.business_metrics, ufrData.field_info);
+        }
+        
+        // 3. RÉPARTITION GRAPHIQUE
+        if (ufrData.repartition) {
+            html += generateUfrRepartitionChart(ufrData.repartition, ufrData.field_info);
+        }
+        
+        // 4. RECOMMANDATIONS
+        if (ufrData.recommendations && ufrData.recommendations.length > 0) {
+            html += generateUfrRecommendations(ufrData.recommendations);
+        }
+        
+        // 5. DÉTAILS
+        if (ufrData.details) {
+            html += generateUfrDetails(ufrData.details, ufrData.field_info);
+        }
+        
+        html += `</div></div>`;
+        return html;
+    }
+
+    function generateUfrTechnicalValidation(techValidation) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #6c757d !important;">
+                <h6 class="mb-2">
+                    <i class="fas fa-cogs me-2"></i>
+                    Validation technique
+                </h6>
+        `;
+        
+        const statusClass = getStatusClass(techValidation.status);
+        html += `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>${techValidation.description || 'Validation du format'}</span>
+                <span class="badge ${statusClass}">${techValidation.status}</span>
+            </div>
+            <p class="text-muted mb-1">${techValidation.message}</p>
+        `;
+        
+        // Barre de progression pour les statistiques détaillées
+        if (techValidation.statistics) {
+            html += generateFormatProgressBar(techValidation.statistics);
+        }
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateUfrBusinessMetrics(metrics, fieldInfo) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #0d6efd !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Analyse métier
+                </h6>
+        `;
+        
+        // Cas spécial : tous les enregistrements à 0
+        if (metrics.no_info_count === metrics.total_records && metrics.total_records > 0) {
+            html += `
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Attention :</strong> L'accessibilité UFR n'est pas renseignée sur ce réseau 
+                    (tous les ${fieldInfo.field_name} sont à la valeur 0)
+                </div>
+            `;
+        }
+        
+        // Métriques principales
+        html += `
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="card bg-light border-0">
+                        <div class="card-body p-3 text-center">
+                            <div class="h4 mb-1 text-primary">${metrics.completion_rate}%</div>
+                            <div class="text-muted small">Taux de renseignement</div>
+                            <div class="text-muted small">${metrics.accessible_count + metrics.not_accessible_count}/${metrics.total_records} avec info</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card bg-light border-0">
+                        <div class="card-body p-3 text-center">
+                            <div class="h4 mb-1 text-success">${metrics.accessibility_rate}%</div>
+                            <div class="text-muted small">Taux d'accessibilité</div>
+                            <div class="text-muted small">${metrics.accessible_count}/${metrics.total_records} accessibles</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Barres de progression détaillées
+        const completionClass = metrics.completion_rate >= 80 ? 'bg-success' : metrics.completion_rate >= 50 ? 'bg-warning' : 'bg-danger';
+        const accessibilityClass = metrics.accessibility_rate >= 70 ? 'bg-success' : metrics.accessibility_rate >= 40 ? 'bg-warning' : 'bg-danger';
+        
+        html += `
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-1">
+                    <small class="text-muted">Renseignement (valeurs 1 et 2)</small>
+                    <small class="text-muted">${metrics.completion_rate}%</small>
+                </div>
+                <div class="progress mb-2" style="height: 6px;">
+                    <div class="progress-bar ${completionClass}" style="width: ${metrics.completion_rate}%"></div>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-1">
+                    <small class="text-muted">Accessibilité (valeur 1)</small>
+                    <small class="text-muted">${metrics.accessibility_rate}%</small>
+                </div>
+                <div class="progress mb-2" style="height: 6px;">
+                    <div class="progress-bar ${accessibilityClass}" style="width: ${metrics.accessibility_rate}%"></div>
+                </div>
+            </div>
+        `;
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateUfrRepartitionChart(repartition, fieldInfo) {
+        const chartId = `ufr-chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #198754 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Répartition des valeurs
+                </h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <canvas id="${chartId}" width="300" height="300"></canvas>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Valeur</th>
+                                        <th>Libellé</th>
+                                        <th>Nombre</th>
+                                        <th>%</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `;
+        
+        // Tri des valeurs pour affichage cohérent
+        const sortedEntries = Object.entries(repartition).sort(([a], [b]) => {
+            const numA = parseInt(a) || 999;
+            const numB = parseInt(b) || 999;
+            return numA - numB;
+        });
+        
+        sortedEntries.forEach(([value, data]) => {
+            // Couleur selon la criticité
+            let rowClass = '';
+            const intValue = parseInt(value);
+            if (intValue === 0) rowClass = 'table-warning';
+            else if (intValue === 2) rowClass = 'table-danger';
+            else if (intValue === 1) rowClass = 'table-success';
+            
+            html += `
+                <tr class="${rowClass}">
+                    <td><strong>${value}</strong></td>
+                    <td>${data.type_name}</td>
+                    <td>${data.count}</td>
+                    <td>${data.percentage}%</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Créer le graphique après un délai
+        setTimeout(() => {
+            createUfrPieChart(chartId, repartition);
+        }, 100);
+        
+        return html;
+    }
+
+    function generateUfrRecommendations(recommendations) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #ffc107 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    Recommandations
+                </h6>
+        `;
+        
+        recommendations.forEach(rec => {
+            let alertClass = 'alert-info';
+            let icon = 'fa-info-circle';
+            
+            switch(rec.type) {
+                case 'critical':
+                    alertClass = 'alert-danger';
+                    icon = 'fa-exclamation-triangle';
+                    break;
+                case 'warning':
+                    alertClass = 'alert-warning';
+                    icon = 'fa-exclamation-circle';
+                    break;
+                case 'success':
+                    alertClass = 'alert-success';
+                    icon = 'fa-check-circle';
+                    break;
+            }
+            
+            html += `
+                <div class="alert ${alertClass} mb-2" role="alert" style="padding: 0.5rem 0.75rem;">
+                    <div class="d-flex align-items-start">
+                        <i class="fas ${icon} me-2 mt-1" style="font-size: 0.9em;"></i>
+                        <div>
+                            <strong>${rec.message}</strong>
+                            <div class="small mt-1">${rec.description}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateUfrDetails(details, fieldInfo) {
+        const detailsId = `ufr-details-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        let html = `
+            <div class="border-start border-3 ps-3 mb-3" style="border-color: #dc3545 !important;">
+                <h6 class="mb-2">
+                    <i class="fas fa-list me-2"></i>
+                    Détails
+                </h6>
+                <button class="btn btn-sm btn-outline-secondary details-toggle" 
+                        data-target="${detailsId}">
+                    <i class="fas fa-chevron-down me-1"></i>Voir les ${fieldInfo.id_field} problématiques
+                </button>
+                <div class="details-content mt-2 d-none" id="${detailsId}">
+                    <div class="card bg-light">
+                        <div class="card-body p-3">
+        `;
+        
+        // Afficher chaque catégorie si elle contient des éléments
+        if (details.no_info_ids && details.no_info_ids.length > 0) {
+            html += `
+                <div class="mb-3">
+                    <h6 class="text-warning">
+                        <i class="fas fa-question-circle me-1"></i>
+                        Sans information (${details.no_info_ids.length})
+                    </h6>
+                    <div class="border rounded p-2 bg-white" style="max-height: 100px; overflow-y: auto;">
+                        <small class="text-muted">${details.no_info_ids.join(', ')}</small>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (details.not_accessible_ids && details.not_accessible_ids.length > 0) {
+            html += `
+                <div class="mb-3">
+                    <h6 class="text-danger">
+                        <i class="fas fa-times-circle me-1"></i>
+                        Non accessibles (${details.not_accessible_ids.length})
+                    </h6>
+                    <div class="border rounded p-2 bg-white" style="max-height: 100px; overflow-y: auto;">
+                        <small class="text-muted">${details.not_accessible_ids.join(', ')}</small>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (details.invalid_ids && details.invalid_ids.length > 0) {
+            html += `
+                <div class="mb-3">
+                    <h6 class="text-dark">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        Valeurs invalides (${details.invalid_ids.length})
+                    </h6>
+                    <div class="border rounded p-2 bg-white" style="max-height: 100px; overflow-y: auto;">
+                        <small class="text-muted">${details.invalid_ids.join(', ')}</small>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (details.accessible_ids && details.accessible_ids.length > 0) {
+            html += `
+                <div class="mb-3">
+                    <h6 class="text-success">
+                        <i class="fas fa-check-circle me-1"></i>
+                        Accessibles (${details.accessible_ids.length})
+                    </h6>
+                    <div class="border rounded p-2 bg-white" style="max-height: 100px; overflow-y: auto;">
+                        <small class="text-muted">Cliquer pour voir...</small>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += `
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        return html;
+    }
+
+    function createUfrPieChart(canvasId, repartition) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Préparer les données avec couleurs spécifiques UFR
+        const labels = [];
+        const values = [];
+        const colors = [];
+        
+        // Couleurs spécifiques pour UFR
+        const ufrColors = {
+            '0': '#ffc107', // Orange pour "pas d'info"
+            '1': '#198754', // Vert pour "accessible"  
+            '2': '#dc3545', // Rouge pour "non accessible"
+        };
+        
+        // Tri pour affichage cohérent
+        const sortedEntries = Object.entries(repartition).sort(([a], [b]) => {
+            const numA = parseInt(a) || 999;
+            const numB = parseInt(b) || 999;
+            return numA - numB;
+        });
+        
+        sortedEntries.forEach(([key, data]) => {
+            labels.push(data.type_name);
+            values.push(data.count);
+            colors.push(ufrColors[key] || '#6c757d');
+        });
+        
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors,
+                    borderColor: colors.map(color => color + '80'),
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed;
+                                const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function generateHierarchyAnalysisHtml(hierarchyData) {
+        const statusClass = getStatusClass(hierarchyData.status);
+        const iconClass = 'fa-sitemap';
+        
+        let html = `
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas ${iconClass} me-2"></i>
+                        Hiérarchie Parent_Station
+                    </h6>
+        `;
+        
+        // Score et statut (même format que UFR)
+        if (hierarchyData.score !== undefined && hierarchyData.grade !== undefined) {
+            const scoreClass = getScoreClass(hierarchyData.score, hierarchyData.percentage);
+            html += `
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge ${scoreClass} score-badge">
+                        ${Math.round(hierarchyData.score)}/100
+                    </span>
+                    <span class="badge ${getGradeClass(hierarchyData.grade)} grade-badge">
+                        ${hierarchyData.grade}
+                    </span>
+                    <span class="badge ${statusClass}">${hierarchyData.status}</span>
+                </div>
+            `;
+        } else {
+            html += `<span class="badge ${statusClass}">${hierarchyData.status}</span>`;
+        }
+        
+        html += `</div>`;
+
+        // AJOUTER CETTE SECTION : Afficher le message d'erreur si présent
+        if (hierarchyData.message && hierarchyData.status === 'error') {
+            html += `
+                <div class="card-body">
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>${hierarchyData.message}</strong>
+                    </div>
+                </div>
+            `;
+            html += `</div>`; // Fermer la card
+            return html; // Retourner directement sans afficher les autres sections
+        }
+        
+        // Barre de progression globale
+        if (hierarchyData.percentage !== undefined) {
+            const progressClass = getProgressClass(hierarchyData.percentage);
+            const progressId = `progress-hierarchy-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            html += `
+                <div class="progress-container px-3 pb-2" style="padding-top: 0.5rem;">
+                    <div class="progress mb-2" style="height: 8px; background-color: #e9ecef;">
+                        <div class="progress-bar ${progressClass}" 
+                            id="${progressId}"
+                            role="progressbar" 
+                            style="width: 0% !important; transition: none !important;" 
+                            data-target-width="${hierarchyData.percentage}"
+                            aria-valuenow="${hierarchyData.percentage}" 
+                            aria-valuemin="0" 
+                            aria-valuemax="100">
+                        </div>
+                    </div>
+                    <small class="text-muted">Score hiérarchie global : ${hierarchyData.percentage}%</small>
+                </div>
+            `;
+        }
+        
+        html += `<div class="card-body">`;
+        
+        // Sections (même ordre que UFR)
+        if (hierarchyData.technical_validation) {
+            html += generateHierarchyTechnicalValidation(hierarchyData.technical_validation);
+        }
+        
+        if (hierarchyData.business_metrics) {
+            html += generateHierarchyBusinessMetrics(hierarchyData.business_metrics, hierarchyData.field_info);
+        }
+        
+        if (hierarchyData.consistency_checks) {
+            html += generateHierarchyConsistencyChecks(hierarchyData.consistency_checks);
+        }
+        
+        if (hierarchyData.geographic_analysis) {
+            html += generateHierarchyGeographicAnalysis(hierarchyData.geographic_analysis);
+        }
+        
+        if (hierarchyData.repartition) {
+            html += generateHierarchyRepartitionChart(hierarchyData.repartition, hierarchyData.field_info);
+        }
+        
+        if (hierarchyData.recommendations && hierarchyData.recommendations.length > 0) {
+            html += generateHierarchyRecommendations(hierarchyData.recommendations);
+        }
+        
+        html += `</div></div>`;
+        return html;
+    }
+
+    function generateHierarchyTechnicalValidation(techValidation) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #6c757d !important;">
+                <h6 class="mb-2">
+                    <i class="fas fa-cogs me-2"></i>
+                    Validation technique
+                </h6>
+        `;
+        
+        const statusClass = getStatusClass(techValidation.status);
+        html += `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>${techValidation.description || 'Validation du format location_type'}</span>
+                <span class="badge ${statusClass}">${techValidation.status}</span>
+            </div>
+            <p class="text-muted mb-1">${techValidation.message}</p>
+        `;
+        
+        // Barre de progression pour les statistiques détaillées
+        if (techValidation.statistics) {
+            html += generateFormatProgressBar(techValidation.statistics);
+        }
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateHierarchyBusinessMetrics(metrics, fieldInfo) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #0d6efd !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Analyse métier
+                </h6>
+        `;
+        
+        // Cas spécial : aucune zone d'arrêt
+        if (metrics.stop_zones_count === 0) {
+            html += `
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Attention :</strong> Aucune zone d'arrêt (location_type=1) définie sur ce réseau
+                </div>
+            `;
+        }
+        
+        // Métriques principales
+        html += `
+            <div class="row mb-3">
+                <div class="col-md-4">
+                    <div class="card bg-light border-0">
+                        <div class="card-body p-3 text-center">
+                            <div class="h4 mb-1 text-primary">${metrics.stop_points_count}</div>
+                            <div class="text-muted small">Points d'arrêt</div>
+                            <div class="text-muted small">location_type = 0</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-light border-0">
+                        <div class="card-body p-3 text-center">
+                            <div class="h4 mb-1 text-success">${metrics.stop_zones_count}</div>
+                            <div class="text-muted small">Zones d'arrêt</div>
+                            <div class="text-muted small">location_type = 1</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-light border-0">
+                        <div class="card-body p-3 text-center">
+                            <div class="h4 mb-1 text-info">${metrics.points_per_zone_avg}</div>
+                            <div class="text-muted small">Points par zone</div>
+                            <div class="text-muted small">moyenne</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Métriques secondaires
+        html += `
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <div class="card bg-light border-0">
+                        <div class="card-body p-3 text-center">
+                            <div class="h4 mb-1 text-warning">${metrics.parent_completion_rate}%</div>
+                            <div class="text-muted small">Taux de rattachement</div>
+                            <div class="text-muted small">${metrics.points_with_parent_count}/${metrics.stop_points_count} avec parent_station</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card bg-light border-0">
+                        <div class="card-body p-3 text-center">
+                            <div class="h4 mb-1 text-danger">${metrics.unused_zones_count}</div>
+                            <div class="text-muted small">Zones orphelines</div>
+                            <div class="text-muted small">non utilisées comme parent</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Barres de progression détaillées
+        const completionClass = metrics.parent_completion_rate >= 80 ? 'bg-success' : metrics.parent_completion_rate >= 50 ? 'bg-warning' : 'bg-danger';
+        const usageClass = metrics.hierarchy_usage_rate >= 80 ? 'bg-success' : metrics.hierarchy_usage_rate >= 50 ? 'bg-warning' : 'bg-danger';
+        
+        html += `
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-1">
+                    <small class="text-muted">Rattachement des points d'arrêt</small>
+                    <small class="text-muted">${metrics.parent_completion_rate}%</small>
+                </div>
+                <div class="progress mb-2" style="height: 6px;">
+                    <div class="progress-bar ${completionClass}" style="width: ${metrics.parent_completion_rate}%"></div>
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-1">
+                    <small class="text-muted">Utilisation des zones d'arrêt</small>
+                    <small class="text-muted">${metrics.hierarchy_usage_rate}%</small>
+                </div>
+                <div class="progress mb-2" style="height: 6px;">
+                    <div class="progress-bar ${usageClass}" style="width: ${metrics.hierarchy_usage_rate}%"></div>
+                </div>
+            </div>
+        `;
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateHierarchyConsistencyChecks(consistencyChecks) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #ffc107 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-link me-2"></i>
+                    Validation de cohérence
+                </h6>
+        `;
+        
+        consistencyChecks.forEach(check => {
+            const statusClass = getStatusClass(check.status);
+            let alertClass = 'alert-info';
+            let icon = 'fa-info-circle';
+            
+            switch(check.status) {
+                case 'error':
+                    alertClass = 'alert-danger';
+                    icon = 'fa-exclamation-triangle';
+                    break;
+                case 'warning':
+                    alertClass = 'alert-warning';
+                    icon = 'fa-exclamation-circle';
+                    break;
+                case 'pass':
+                    alertClass = 'alert-success';
+                    icon = 'fa-check-circle';
+                    break;
+            }
+            
+            html += `
+                <div class="alert ${alertClass} mb-2" role="alert" style="padding: 0.5rem 0.75rem;">
+                    <div class="d-flex align-items-start justify-content-between">
+                        <div class="d-flex align-items-start flex-grow-1">
+                            <i class="fas ${icon} me-2 mt-1" style="font-size: 0.9em;"></i>
+                            <div class="flex-grow-1">
+                                <strong>${check.description}</strong>
+                                <div class="small mt-1">${check.message}</div>
+            `;
+            
+            // Afficher quelques détails si disponibles
+            if (check.details && Object.keys(check.details).length > 0) {
+                const hasInvalidItems = (check.details.invalid_zones && check.details.invalid_zones.length > 0) ||
+                                    (check.details.invalid_points && check.details.invalid_points.length > 0) ||
+                                    (check.details.orphaned_zones && check.details.orphaned_zones.length > 0);
+                
+                if (hasInvalidItems) {
+                    const detailsId = `hierarchy-details-${check.check_name}-${Math.random().toString(36).substr(2, 9)}`;
+                    html += `
+                        <button class="btn btn-sm btn-outline-secondary mt-1 details-toggle" 
+                                data-target="${detailsId}" style="padding: 0.2rem 0.5rem; font-size: 0.75em;">
+                            <i class="fas fa-chevron-down me-1"></i>Voir détails
+                        </button>
+                        <div class="details-content mt-2 d-none" id="${detailsId}">
+                            <div class="card bg-light">
+                                <div class="card-body p-2">
+                                    ${generateHierarchyCheckDetails(check.details)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+            
+            html += `
+                            </div>
+                        </div>
+                        <span class="badge ${statusClass} ms-2">${check.status}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateHierarchyCheckDetails(details) {
+        let html = '';
+        
+        if (details.invalid_zones && details.invalid_zones.length > 0) {
+            html += `
+                <div class="mb-2">
+                    <h6 class="text-danger small">
+                        <i class="fas fa-times-circle me-1"></i>
+                        Zones avec parent_station (${details.invalid_zones.length})
+                    </h6>
+                    <div class="border rounded p-2 bg-white" style="max-height: 80px; overflow-y: auto;">
+                        <small class="text-muted">${details.invalid_zones.join(', ')}</small>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (details.invalid_points && details.invalid_points.length > 0) {
+            html += `
+                <div class="mb-2">
+                    <h6 class="text-danger small">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        Points avec références invalides (${details.invalid_points.length})
+                    </h6>
+                    <div class="border rounded p-2 bg-white" style="max-height: 80px; overflow-y: auto;">
+                        <small class="text-muted">${details.invalid_points.join(', ')}</small>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (details.orphaned_zones && details.orphaned_zones.length > 0) {
+            html += `
+                <div class="mb-2">
+                    <h6 class="text-warning small">
+                        <i class="fas fa-unlink me-1"></i>
+                        Zones orphelines (${details.orphaned_zones.length})
+                    </h6>
+                    <div class="border rounded p-2 bg-white" style="max-height: 80px; overflow-y: auto;">
+                        <small class="text-muted">${details.orphaned_zones.join(', ')}</small>
+                    </div>
+                </div>
+            `;
+        }
+        
+        return html;
+    }
+
+    function generateHierarchyGeographicAnalysis(geoAnalysis) {
+        if (!geoAnalysis) return '';
+        
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #198754 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-map-marker-alt me-2"></i>
+                    Analyse géographique
+                </h6>
+        `;
+        
+        const statusClass = getStatusClass(geoAnalysis.status);
+        
+        html += `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>${geoAnalysis.description}</span>
+                <span class="badge ${statusClass}">${geoAnalysis.status}</span>
+            </div>
+            <p class="text-muted mb-3">${geoAnalysis.message}</p>
+        `;
+        
+        if (geoAnalysis.details && geoAnalysis.details.total_analyzed > 0) {
+            const details = geoAnalysis.details;
+            
+            // Métriques de distance
+            html += `
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-info">${details.avg_distance_m}m</div>
+                                <div class="text-muted small">Distance moyenne</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-warning">${details.max_distance_m}m</div>
+                                <div class="text-muted small">Distance maximale</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-danger">${details.points_over_500m}</div>
+                                <div class="text-muted small">Points > 500m</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Alerte si points très éloignés
+            if (details.points_over_1000m > 0) {
+                html += `
+                    <div class="alert alert-danger mb-3" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>${details.points_over_1000m} points d'arrêt à plus de 1km de leur zone !</strong>
+                    </div>
+                `;
+            } else if (details.points_over_500m > 0) {
+                html += `
+                    <div class="alert alert-warning mb-3" role="alert">
+                        <i class="fas fa-exclamation-circle me-2"></i>
+                        <strong>${details.points_over_500m} points d'arrêt à plus de 500m de leur zone</strong>
+                    </div>
+                `;
+            }
+            
+            // Détails des points problématiques
+            if (details.points_too_far && details.points_too_far.length > 0) {
+                const detailsId = `geo-details-${Math.random().toString(36).substr(2, 9)}`;
+                html += `
+                    <button class="btn btn-sm btn-outline-secondary details-toggle" 
+                            data-target="${detailsId}">
+                        <i class="fas fa-chevron-down me-1"></i>Voir les points les plus éloignés
+                    </button>
+                    <div class="details-content mt-2 d-none" id="${detailsId}">
+                        <div class="card bg-light">
+                            <div class="card-body p-3">
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Point d'arrêt</th>
+                                                <th>Zone d'arrêt</th>
+                                                <th>Distance</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                `;
+                
+                details.points_too_far.forEach(point => {
+                    html += `
+                        <tr>
+                            <td><code>${point.point_id}</code></td>
+                            <td><code>${point.zone_id}</code></td>
+                            <td><span class="badge bg-danger">${point.distance_m}m</span></td>
+                        </tr>
+                    `;
+                });
+                
+                html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateHierarchyRepartitionChart(repartition, fieldInfo) {
+        const chartId = `hierarchy-chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #6f42c1 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Répartition des location_type
+                </h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <canvas id="${chartId}" width="300" height="300"></canvas>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Libellé</th>
+                                        <th>Nombre</th>
+                                        <th>%</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `;
+        
+        // Tri des valeurs pour affichage cohérent
+        const sortedEntries = Object.entries(repartition).sort(([a], [b]) => {
+            const numA = parseInt(a) || 999;
+            const numB = parseInt(b) || 999;
+            return numA - numB;
+        });
+        
+        sortedEntries.forEach(([value, data]) => {
+            // Couleur selon le type
+            let rowClass = '';
+            const intValue = parseInt(value);
+            if (intValue === 0) rowClass = 'table-info';
+            else if (intValue === 1) rowClass = 'table-success';
+            else rowClass = 'table-light';
+            
+            html += `
+                <tr class="${rowClass}">
+                    <td><strong>${value}</strong></td>
+                    <td>${data.type_name}</td>
+                    <td>${data.count}</td>
+                    <td>${data.percentage}%</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Créer le graphique après un délai
+        setTimeout(() => {
+            createHierarchyPieChart(chartId, repartition);
+        }, 100);
+        
+        return html;
+    }
+
+    function createHierarchyPieChart(canvasId, repartition) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Préparer les données avec couleurs spécifiques hiérarchie
+        const labels = [];
+        const values = [];
+        const colors = [];
+        
+        // Couleurs spécifiques pour location_type
+        const hierarchyColors = {
+            '0': '#0dcaf0', // Bleu clair pour points d'arrêt
+            '1': '#198754', // Vert pour zones d'arrêt
+            '2': '#6f42c1', // Violet pour entrées/sorties
+            '3': '#fd7e14', // Orange pour noeuds génériques
+            '4': '#dc3545', // Rouge pour zones d'embarquement
+        };
+        
+        // Tri pour affichage cohérent
+        const sortedEntries = Object.entries(repartition).sort(([a], [b]) => {
+            const numA = parseInt(a) || 999;
+            const numB = parseInt(b) || 999;
+            return numA - numB;
+        });
+        
+        sortedEntries.forEach(([key, data]) => {
+            labels.push(data.type_name);
+            values.push(data.count);
+            colors.push(hierarchyColors[key] || '#6c757d');
+        });
+        
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors,
+                    borderColor: colors.map(color => color + '80'),
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed;
+                                const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function generateHierarchyRecommendations(recommendations) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #ffc107 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    Recommandations
+                </h6>
+        `;
+        
+        recommendations.forEach(rec => {
+            let alertClass = 'alert-info';
+            let icon = 'fa-info-circle';
+            
+            switch(rec.type) {
+                case 'critical':
+                    alertClass = 'alert-danger';
+                    icon = 'fa-exclamation-triangle';
+                    break;
+                case 'error':
+                    alertClass = 'alert-danger';
+                    icon = 'fa-exclamation-triangle';
+                    break;
+                case 'warning':
+                    alertClass = 'alert-warning';
+                    icon = 'fa-exclamation-circle';
+                    break;
+                case 'success':
+                    alertClass = 'alert-success';
+                    icon = 'fa-check-circle';
+                    break;
+            }
+            
+            html += `
+                <div class="alert ${alertClass} mb-2" role="alert" style="padding: 0.5rem 0.75rem;">
+                    <div class="d-flex align-items-start">
+                        <i class="fas ${icon} me-2 mt-1" style="font-size: 0.9em;"></i>
+                        <div>
+                            <strong>${rec.message}</strong>
+                            <div class="small mt-1">${rec.description}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateTemporalAnalysisHtml(temporalData) {
+        const statusClass = getStatusClass(temporalData.status);
+        const iconClass = 'fa-clock';
+        
+        let html = `
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">
+                        <i class="fas ${iconClass} me-2"></i>
+                        Cohérence Temporelle
+                    </h6>
+        `;
+        
+        // Score et statut
+        if (temporalData.score !== undefined && temporalData.grade !== undefined) {
+            const scoreClass = getScoreClass(temporalData.score, temporalData.percentage);
+            html += `
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge ${scoreClass} score-badge">
+                        ${Math.round(temporalData.score)}/100
+                    </span>
+                    <span class="badge ${getGradeClass(temporalData.grade)} grade-badge">
+                        ${temporalData.grade}
+                    </span>
+                    <span class="badge ${statusClass}">${temporalData.status}</span>
+                </div>
+            `;
+        } else {
+            html += `<span class="badge ${statusClass}">${temporalData.status}</span>`;
+        }
+        
+        html += `</div>`;
+        
+        // Barre de progression globale
+        if (temporalData.percentage !== undefined) {
+            const progressClass = getProgressClass(temporalData.percentage);
+            const progressId = `progress-temporal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            html += `
+                <div class="progress-container px-3 pb-2" style="padding-top: 0.5rem;">
+                    <div class="progress mb-2" style="height: 8px; background-color: #e9ecef;">
+                        <div class="progress-bar ${progressClass}" 
+                            id="${progressId}"
+                            role="progressbar" 
+                            style="width: 0% !important; transition: none !important;" 
+                            data-target-width="${temporalData.percentage}"
+                            aria-valuenow="${temporalData.percentage}" 
+                            aria-valuemin="0" 
+                            aria-valuemax="100">
+                        </div>
+                    </div>
+                    <small class="text-muted">Score cohérence temporelle : ${temporalData.percentage}%</small>
+                </div>
+            `;
+        }
+        
+        html += `<div class="card-body">`;
+        
+        // Sections
+        if (temporalData.technical_validation) {
+            html += generateTemporalTechnicalValidation(temporalData.technical_validation);
+        }
+        
+        if (temporalData.business_metrics) {
+            html += generateTemporalBusinessMetrics(temporalData.business_metrics);
+        }
+        
+        if (temporalData.intra_stop_checks && temporalData.intra_stop_checks.length > 0) {
+            html += generateTemporalIntraStopChecks(temporalData.intra_stop_checks);
+        }
+        
+        if (temporalData.sequential_checks && temporalData.sequential_checks.length > 0) {
+            html += generateTemporalSequentialChecks(temporalData.sequential_checks);
+        }
+        
+        if (temporalData.recommendations && temporalData.recommendations.length > 0) {
+            html += generateTemporalRecommendations(temporalData.recommendations);
+        }
+        
+        html += `</div></div>`;
+        return html;
+    }
+
+    function generateTemporalTechnicalValidation(techValidation) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #6c757d !important;">
+                <h6 class="mb-2">
+                    <i class="fas fa-cogs me-2"></i>
+                    Validation technique des horaires
+                </h6>
+        `;
+        
+        const statusClass = getStatusClass(techValidation.status);
+        html += `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>${techValidation.description}</span>
+                <span class="badge ${statusClass}">${techValidation.status}</span>
+            </div>
+            <p class="text-muted mb-3">${techValidation.message}</p>
+        `;
+        
+        if (techValidation.details) {
+            const details = techValidation.details;
+            
+            html += `
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-info">${details.total_records}</div>
+                                <div class="text-muted small">Total enregistrements</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-warning">${details.invalid_arrivals}</div>
+                                <div class="text-muted small">Arrivées invalides</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-danger">${details.invalid_departures}</div>
+                                <div class="text-muted small">Départs invalides</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            if (details.total_invalid > 0) {
+                const errorRate = ((details.total_invalid / details.total_records) * 100).toFixed(1);
+                html += `
+                    <div class="alert alert-warning" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>${details.total_invalid} horaires invalides détectés (${errorRate}%)</strong>
+                        <div class="small mt-1">Format attendu : HH:MM:SS (les horaires > 24h sont autorisés)</div>
+                    </div>
+                `;
+            }
+        }
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateTemporalBusinessMetrics(metrics) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #0d6efd !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-chart-line me-2"></i>
+                    Métriques temporelles
+                </h6>
+        `;
+        
+        // Métriques des arrêts
+        html += `
+            <div class="mb-4">
+                <h6 class="text-primary mb-3">Temps d'arrêt</h6>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-success">${metrics.valid_stops_count}</div>
+                                <div class="text-muted small">Arrêts valides</div>
+                                <div class="text-muted small">sur ${metrics.total_stops}</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-info">${metrics.avg_stop_duration_minutes}min</div>
+                                <div class="text-muted small">Temps d'arrêt moyen</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-warning">${metrics.max_stop_duration_minutes}min</div>
+                                <div class="text-muted small">Temps d'arrêt maximum</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Métriques des voyages
+        html += `
+            <div class="mb-3">
+                <h6 class="text-success mb-3">Durées de voyage</h6>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-primary">${metrics.total_trips}</div>
+                                <div class="text-muted small">Voyages totaux</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-info">${Math.round(metrics.avg_trip_duration_minutes)}min</div>
+                                <div class="text-muted small">Durée moyenne</div>
+                                <div class="text-muted small">${Math.round(metrics.avg_trip_duration_minutes/60*10)/10}h</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light border-0">
+                            <div class="card-body p-3 text-center">
+                                <div class="h5 mb-1 text-warning">${Math.round(metrics.max_trip_duration_minutes)}min</div>
+                                <div class="text-muted small">Durée maximum</div>
+                                <div class="text-muted small">${Math.round(metrics.max_trip_duration_minutes/60*10)/10}h</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Alertes métriques
+        if (metrics.avg_stop_duration_minutes > 30) {
+            html += `
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-clock me-2"></i>
+                    <strong>Temps d'arrêt élevés détectés</strong>
+                    <div class="small mt-1">Temps d'arrêt moyen de ${metrics.avg_stop_duration_minutes} minutes</div>
+                </div>
+            `;
+        }
+        
+        if (metrics.avg_trip_duration_minutes > 300) {
+            html += `
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-route me-2"></i>
+                    <strong>Voyages longs détectés</strong>
+                    <div class="small mt-1">Durée moyenne de ${Math.round(metrics.avg_trip_duration_minutes/60*10)/10}h par voyage</div>
+                </div>
+            `;
+        }
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateTemporalIntraStopChecks(intraChecks) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #198754 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-exchange-alt me-2"></i>
+                    Cohérence arrivée/départ
+                </h6>
+        `;
+        
+        intraChecks.forEach(check => {
+            const statusClass = getStatusClass(check.status);
+            let alertClass = 'alert-info';
+            let icon = 'fa-info-circle';
+            
+            switch(check.status) {
+                case 'error':
+                    alertClass = 'alert-danger';
+                    icon = 'fa-exclamation-triangle';
+                    break;
+                case 'warning':
+                    alertClass = 'alert-warning';
+                    icon = 'fa-exclamation-circle';
+                    break;
+                case 'pass':
+                    alertClass = 'alert-success';
+                    icon = 'fa-check-circle';
+                    break;
+            }
+            
+            html += `
+                <div class="alert ${alertClass} mb-2" role="alert" style="padding: 0.5rem 0.75rem;">
+                    <div class="d-flex align-items-start justify-content-between">
+                        <div class="d-flex align-items-start flex-grow-1">
+                            <i class="fas ${icon} me-2 mt-1" style="font-size: 0.9em;"></i>
+                            <div class="flex-grow-1">
+                                <strong>${check.description}</strong>
+                                <div class="small mt-1">${check.message}</div>
+            `;
+            
+            // Détails spécifiques
+            if (check.details && check.details.inconsistent_count > 0) {
+                html += `
+                    <div class="small mt-2">
+                        <strong>Voyages affectés :</strong> ${check.details.inconsistent_trips.slice(0, 5).join(', ')}
+                        ${check.details.inconsistent_trips.length > 5 ? '...' : ''}
+                    </div>
+                `;
+            }
+            
+            if (check.details && check.details.max_duration_minutes) {
+                html += `
+                    <div class="small mt-1">
+                        <strong>Durée max :</strong> ${check.details.max_duration_minutes}min | 
+                        <strong>Moyenne :</strong> ${check.details.avg_duration_minutes}min
+                    </div>
+                `;
+            }
+            
+            html += `
+                            </div>
+                        </div>
+                        <span class="badge ${statusClass} ms-2">${check.status}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateTemporalSequentialChecks(sequentialChecks) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #dc3545 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-sort-numeric-down me-2"></i>
+                    Cohérence séquentielle
+                </h6>
+        `;
+        
+        sequentialChecks.forEach(check => {
+            const statusClass = getStatusClass(check.status);
+            let alertClass = check.status === 'pass' ? 'alert-success' : 'alert-danger';
+            let icon = check.status === 'pass' ? 'fa-check-circle' : 'fa-exclamation-triangle';
+            
+            html += `
+                <div class="alert ${alertClass} mb-2" role="alert" style="padding: 0.5rem 0.75rem;">
+                    <div class="d-flex align-items-start justify-content-between">
+                        <div class="d-flex align-items-start flex-grow-1">
+                            <i class="fas ${icon} me-2 mt-1" style="font-size: 0.9em;"></i>
+                            <div class="flex-grow-1">
+                                <strong>${check.description}</strong>
+                                <div class="small mt-1">${check.message}</div>
+            `;
+            
+            // Afficher les détails des problèmes
+            if (check.details && check.details.problematic_trips && check.details.problematic_trips.length > 0) {
+                const detailsId = `temporal-sequential-${Math.random().toString(36).substr(2, 9)}`;
+                html += `
+                    <button class="btn btn-sm btn-outline-secondary mt-2 details-toggle" 
+                            data-target="${detailsId}" style="padding: 0.2rem 0.5rem; font-size: 0.75em;">
+                        <i class="fas fa-chevron-down me-1"></i>Voir les incohérences
+                    </button>
+                    <div class="details-content mt-2 d-none" id="${detailsId}">
+                        <div class="card bg-light">
+                            <div class="card-body p-2">
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Voyage</th>
+                                                <th>Séquence</th>
+                                                <th>Départ</th>
+                                                <th>Arrivée suivante</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                `;
+                
+                check.details.problematic_trips.forEach(trip => {
+                    html += `
+                        <tr>
+                            <td><code>${trip.trip_id}</code></td>
+                            <td>${trip.current_sequence} → ${trip.next_sequence}</td>
+                            <td><span class="badge bg-danger">${trip.current_departure}</span></td>
+                            <td><span class="badge bg-warning">${trip.next_arrival}</span></td>
+                        </tr>
+                    `;
+                });
+                
+                html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += `
+                            </div>
+                        </div>
+                        <span class="badge ${statusClass} ms-2">${check.status}</span>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateTemporalRecommendations(recommendations) {
+        let html = `
+            <div class="border-start border-3 ps-3 mb-4" style="border-color: #ffc107 !important;">
+                <h6 class="mb-3">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    Recommandations temporelles
+                </h6>
+        `;
+        
+        recommendations.forEach(rec => {
+            let alertClass = 'alert-info';
+            let icon = 'fa-info-circle';
+            
+            switch(rec.type) {
+                case 'critical':
+                    alertClass = 'alert-danger';
+                    icon = 'fa-exclamation-triangle';
+                    break;
+                case 'error':
+                    alertClass = 'alert-danger';
+                    icon = 'fa-exclamation-triangle';
+                    break;
+                case 'warning':
+                    alertClass = 'alert-warning';
+                    icon = 'fa-exclamation-circle';
+                    break;
+                case 'success':
+                    alertClass = 'alert-success';
+                    icon = 'fa-check-circle';
+                    break;
+            }
+            
+            html += `
+                <div class="alert ${alertClass} mb-2" role="alert" style="padding: 0.5rem 0.75rem;">
+                    <div class="d-flex align-items-start">
+                        <i class="fas ${icon} me-2 mt-1" style="font-size: 0.9em;"></i>
+                        <div>
+                            <strong>${rec.message}</strong>
+                            <div class="small mt-1">${rec.description}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        return html;
+    }
+
+    function generateRepartitionHtml(repartitionData) {
+        let html = '';
+        
+        Object.entries(repartitionData).forEach(([key, data]) => {
+            const chartId = `chart-${key}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            
+            let title = '';
+            switch(key) {
+                case 'routes_by_type':
+                    title = 'Répartition par type de transport';
+                    break;
+                case 'routes_by_agency':
+                    title = 'Répartition par agence';
+                    break;
+                case 'stops_by_location_type':
+                    title = 'Répartition par type d\'arrêt';
+                    break;
+                case 'stops_by_wheelchair_boarding':
+                    title = 'Répartition par possibilité d\'embarquement UFR';
+                    break;
+                case 'stops_by_direction_id':
+                    title = 'Répartition par sens de direction';
+                    break;
+                case 'stops_by_bikes_allowed':
+                    title = 'Répartition par possibilité de prendre un vélo à bord du moyen de transport';
+                    break;
+                case 'stops_by_cars_allowed':
+                    title = 'Répartition par possibilité de prendre une voiture à bord du moyen de transport';
+                    break;
+                case 'stats_exception_type':
+                    title = 'Répartition par type d\'exception';
+                    break;
+                case 'stats_pickup':
+                    title = 'Répartition par type de montée';
+                    break;
+                case 'stats_dropoff':
+                    title = 'Répartition par type de descente';
+                    break;
+                default:
+                    title = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            }
+            
+            html += `
+                <div class="mb-4">
+                    <h6 class="mb-3">${title}</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <canvas id="${chartId}" width="300" height="300"></canvas>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Élément</th>
+                                            <th>Nombre</th>
+                                            <th>Pourcentage</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+            `;
+            
+            Object.entries(data).forEach(([itemKey, itemData]) => {
+                const displayName = itemData.type_name || itemData.agency_name || itemKey;
+                html += `
+                    <tr>
+                        <td>${displayName}</td>
+                        <td>${itemData.count}</td>
+                        <td>${itemData.percentage}%</td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Stocker les données pour créer le graphique plus tard
+            setTimeout(() => {
+                createPieChart(chartId, data, title);
+            }, 100);
+        });
+        
+        return html;
+    }
+
+    function calculateValidityScore(checks) {
+        let totalValidityPercentages = [];
+        let hasErrors = false;
+        let hasWarnings = false;
+        let excludedOptionalFields = [];
+        
+        checks.forEach(check => {
+            // Compter les statuts pour déterminer le statut global
+            if (check.status === 'error') hasErrors = true;
+            if (check.status === 'warning') hasWarnings = true;
+            
+            // NOUVEAU : Vérifier si c'est un champ optionnel avec colonne manquante
+            const isMissingColumn = check.details && check.details.missing_column === true;
+            const isOptional = check.type === 'optional';
+            
+            if (isMissingColumn && isOptional) {
+                // Champ optionnel avec colonne manquante → EXCLU du calcul
+                excludedOptionalFields.push(check.check_name || check.description);
+                return; // Skip ce check
+            }
+            
+            if (check.statistics) {
+                // Champ avec statistiques détaillées
+                const stats = check.statistics;
+                const total = stats.number || 0;
+                const invalid = stats.invalid || 0;
+                const empty = stats.empty || 0;
+                const valid = total - invalid - empty;
+                
+                if (total > 0) {
+                    const validityPercentage = (valid / total) * 100;
+                    totalValidityPercentages.push(validityPercentage);
+                }
+            } else if (check.status === 'pass') {
+                // Champ sans statistiques mais avec statut "pass" = 100%
+                totalValidityPercentages.push(100);
+            } else if (isMissingColumn && check.type === 'required') {
+                // Champ requis avec colonne manquante = 0%
+                totalValidityPercentages.push(0);
+            } else if (check.status === 'error') {
+                // Autres erreurs = 0%
+                totalValidityPercentages.push(0);
+            }
+            // Les autres cas (warning sans missing_column) sont inclus normalement
+        });
+        
+        if (totalValidityPercentages.length === 0) {
+            return { score: 0, percentage: 0, grade: 'F', status: 'error' };
+        }
+        
+        // Calculer la moyenne des pourcentages de validité
+        const averageValidity = totalValidityPercentages.reduce((sum, pct) => sum + pct, 0) / totalValidityPercentages.length;
+        
+        // Déterminer le statut global
+        let globalStatus = 'pass';
+        if (hasErrors) globalStatus = 'error';
+        else if (hasWarnings) globalStatus = 'warning';
+        
+        // Calculer le grade
+        const grade = calculateGradeFromPercentage(averageValidity);
+        
+        // DEBUG pour vérifier le calcul
+        console.log('Calcul validité (excluant colonnes optionnelles manquantes):', {
+            checksIncluded: totalValidityPercentages.length,
+            totalChecks: checks.length,
+            percentages: totalValidityPercentages,
+            excludedOptionalFields: excludedOptionalFields,
+            average: averageValidity,
+            grade: grade,
+            status: globalStatus
+        });
+        
+        return {
+            score: averageValidity,
+            percentage: Math.round(averageValidity),
+            grade: grade,
+            status: globalStatus
+        };
+    }
+
+    function calculateGradeFromPercentage(percentage) {
+        if (percentage >= 95) return "A+";
+        if (percentage >= 90) return "A";
+        if (percentage >= 85) return "B+";
+        if (percentage >= 80) return "B";
+        if (percentage >= 75) return "C+";
+        if (percentage >= 70) return "C";
+        if (percentage >= 60) return "D";
+        return "F";
+    }
+
+    function createPieChart(canvasId, data, title) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        
+        const ctx = canvas.getContext('2d');
+        
+        // Préparer les données pour Chart.js
+        const labels = [];
+        const values = [];
+        const colors = [];
+        
+        // Palette de couleurs
+        const colorPalette = [
+            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', 
+            '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF',
+            '#4BC0C0', '#36A2EB', '#FFCE56', '#9966FF'
+        ];
+        
+        Object.entries(data).forEach(([key, itemData], index) => {
+            const displayName = itemData.type_name || itemData.agency_name || key;
+            labels.push(displayName);
+            values.push(itemData.count);
+            colors.push(colorPalette[index % colorPalette.length]);
+        });
+        
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: colors,
+                    borderColor: colors.map(color => color + '80'), // Transparence pour les bordures
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 15,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed;
+                                const total = context.dataset.data.reduce((sum, val) => sum + val, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return `${label}: ${value} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    
+    function getFieldTypeBadge(fieldType) {
+        if (fieldType === 'required') {
+            return `<span class="badge bg-danger text-white ms-2" style="font-size: 0.7em;">Requis</span>`;
+        } else if (fieldType === 'optional') {
+            return `<span class="badge bg-info text-white ms-2" style="font-size: 0.7em;">Optionnel</span>`;
+        }
+        return '';
+    }
+
+    function generateFormatProgressBar(statistics) {
+        const total = statistics.number || 0;
+        const invalid = statistics.invalid || 0;
+        const empty = statistics.empty || 0;
+        const valid = total - invalid - empty;
+        
+        if (total === 0) return '';
+        
+        const validPercent = Math.round((valid / total) * 100);
+        const invalidPercent = Math.round((invalid / total) * 100);
+        const emptyPercent = Math.round((empty / total) * 100);
+        
+        return `
+            <div class="mt-2 mb-2">
+                <div class="d-flex justify-content-between mb-1">
+                    <small class="text-muted">Répartition des valeurs</small>
+                    <small class="text-muted">${total} total</small>
+                </div>
+                <div class="progress mb-2" style="height: 8px;">
+                    <div class="progress-bar bg-success" 
+                        style="width: ${validPercent}%" 
+                        title="${valid} valides (${validPercent}%)">
+                    </div>
+                    <div class="progress-bar bg-danger" 
+                        style="width: ${invalidPercent}%" 
+                        title="${invalid} invalides (${invalidPercent}%)">
+                    </div>
+                    <div class="progress-bar bg-secondary" 
+                        style="width: ${emptyPercent}%" 
+                        title="${empty} vides (${emptyPercent}%)">
+                    </div>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <div class="d-flex gap-3">
+                        <small class="text-success">
+                            <i class="fas fa-check-circle me-1"></i>${valid} valides
+                        </small>
+                        <small class="text-danger">
+                            <i class="fas fa-times-circle me-1"></i>${invalid} invalides
+                        </small>
+                        <small class="text-secondary">
+                            <i class="fas fa-minus-circle me-1"></i>${empty} vides
+                        </small>
+                    </div>
+                    <small class="text-muted">${validPercent}% valides</small>
+                </div>
+            </div>
+        `;
+    }
+
+    // FONCTION CRITIQUE - Animation forcée des barres de progression
+    function forceUpdateAllProgressBars() {
+        console.log('forceUpdateAllProgressBars appelée'); // DEBUG
+        
+        // Sélectionner toutes les barres avec l'attribut data-target-width
+        const progressBars = document.querySelectorAll('.progress-bar[data-target-width]');
+        console.log('Barres trouvées:', progressBars.length); // DEBUG
+        
+        progressBars.forEach((bar, index) => {
+            const targetWidth = bar.getAttribute('data-target-width');
+            console.log(`Barre ${index}: target=${targetWidth}%`); // DEBUG
+            
+            // Reset complet
+            bar.style.transition = 'none';
+            bar.style.width = '0%';
+            
+            // Forcer le reflow
+            bar.offsetWidth;
+            
+            // Animer vers la cible
+            setTimeout(() => {
+                bar.style.transition = 'width 1.2s ease-out';
+                bar.style.width = `${targetWidth}%`;
+                console.log(`Barre ${index} animée vers ${targetWidth}%`); // DEBUG
+            }, 100 + (index * 50)); // Délai échelonné
+        });
+
+            setTimeout(() => {
+
+            }, 500);
+    }
+
+    // Fonctions utilitaires pour les styles
+    function getScoreClass(score, percentage) {
+        if (percentage >= 90) return 'bg-success text-white';
+        if (percentage >= 80) return 'bg-info text-white';
+        if (percentage >= 70) return 'bg-warning text-dark';
+        if (percentage >= 60) return 'bg-orange text-white';
+        return 'bg-danger text-white';
+    }
+
+    function getGradeClass(grade) {
+        switch(grade) {
+            case 'A+':
+            case 'A': return 'bg-success text-white';
+            case 'B+':
+            case 'B': return 'bg-info text-white';
+            case 'C+':
+            case 'C': return 'bg-warning text-dark';
+            case 'D': return 'bg-orange text-white';
+            case 'F': return 'bg-danger text-white';
+            default: return 'bg-secondary text-white';
+        }
+    }
+
+    function getProgressClass(percentage) {
+        if (percentage >= 90) return 'bg-success';
+        if (percentage >= 80) return 'bg-info';
+        if (percentage >= 70) return 'bg-warning';
+        if (percentage >= 60) return 'bg-orange';
+        return 'bg-danger';
+    }
+
+    function getStatusClass(status) {
+        switch (status) {
+            case 'pass': return 'bg-success';
+            case 'warning': return 'bg-warning';
+            case 'error': return 'bg-danger';
+            case 'critical': return 'bg-dark';
+            default: return 'bg-secondary';
+        }
+    }
+
+    function getStatusColor(status) {
+        switch (status) {
+            case 'pass': return '#198754';
+            case 'warning': return '#ffc107';
+            case 'error': return '#dc3545';
+            case 'critical': return '#212529';
+            default: return '#6c757d';
+        }
+    }
+
+    function getIconClass(type) {
+        switch (type) {
+            case 'danger': return 'fa-exclamation-triangle';
+            case 'info': return 'fa-info-circle';
+            case 'warning': return 'fa-exclamation-circle';
+            default: return 'fa-check-circle';
+        }
+    }
+
+    // Autres fonctions (displayErrorResult, clearResults, etc.) - gardez vos versions existantes
+    function displayErrorResult(fileType, errorMessage) {
+        const title = document.getElementById('resultsTitle');
+        title.innerHTML = `<i class="fas fa-clipboard-list me-2"></i>Résultats d'audit - ${fileType.toUpperCase()} (Erreur)`;
+        
+        resultsContainer.innerHTML = `
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Erreur d'audit</h6>
+                    <span class="badge bg-danger">error</span>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-danger">
+                        <strong>Erreur lors de l'audit de ${fileType.toUpperCase()}:</strong><br>${errorMessage}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    async function runAllAudits() {
+        runAllButton.disabled = true;
+        runAllButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Audit en cours...';
+        
+        try {
+            // Appeler la vraie route run-all au lieu de faire une boucle
+            const response = await fetch('/audit/run-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok) {
+                // Mettre à jour l'interface avec les résultats
+                if (result.results) {
+                    Object.entries(result.results).forEach(([fileType, fileResult]) => {
+                        auditResults[fileType] = fileResult;
+                        updateFileStatusWithScore(fileType, fileResult);
+                    });
+                }
+                
+                updateGlobalSummary();
+                console.log('Tous les audits terminés:', result);
+                
+            } else {
+                throw new Error(result.error || 'Erreur lors des audits');
+            }
+            
+        } catch (error) {
+            console.error('Erreur audits:', error);
+            // Afficher l'erreur à l'utilisateur
+            alert(`Erreur lors des audits: ${error.message}`);
+            
+        } finally {
+            runAllButton.disabled = false;
+            runAllButton.innerHTML = '<i class="fas fa-play me-1"></i>Lancer tous les audits';
+        }
+    }
+
+    function clearResults() {
+        auditResults = {};
+        document.querySelectorAll('.audit-status').forEach(badge => {
+            badge.className = 'badge bg-secondary audit-status';
+            badge.textContent = 'Non audité';
+            badge.innerHTML = 'Non audité';
+        });
+
+        document.querySelectorAll('.gtfs-file-item').forEach(item => {
+            item.classList.remove('has-results');
+        });
+
+        
+        resultsContainer.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center py-5">
+                <div class="text-center text-muted">
+                    <i class="fas fa-clipboard-list fa-3x mb-3"></i>
+                    <h5>Sélectionnez un fichier pour commencer l'audit</h5>
+                    <p>Cliquez sur le bouton <i class="fas fa-play"></i> à côté d'un fichier GTFS</p>
+                </div>
+            </div>
+        `;
+        
+        globalSummaryCard.classList.add('d-none');
+        document.getElementById('resultsTitle').innerHTML = `
+            <i class="fas fa-clipboard-list me-2"></i>
+            Résultats d'audit
+        `;
+    }
+
+    function updateGlobalSummary() {
+        const results = Object.values(auditResults);
+        if (results.length === 0) {
+            globalSummaryCard.classList.add('d-none');
+            return;
+        }
+        
+        let totalFiles = results.length;
+        let passedFiles = 0;
+        let warningFiles = 0;
+        let errorFiles = 0;
+        let criticalFiles = 0;
+        
+        results.forEach(result => {
+            const status = result.summary?.overall_status;
+            switch (status) {
+                case 'pass': passedFiles++; break;
+                case 'warning': warningFiles++; break;
+                case 'error': errorFiles++; break;
+                case 'critical': criticalFiles++; break;
+            }
+        });
+        
+        const summaryContent = document.getElementById('globalSummaryContent');
+        summaryContent.innerHTML = `
+            <div class="row g-2">
+                <div class="col-6"><div class="badge bg-success w-100">${passedFiles} Succès</div></div>
+                <div class="col-6"><div class="badge bg-warning w-100">${warningFiles} Alertes</div></div>
+                <div class="col-6"><div class="badge bg-danger w-100">${errorFiles} Erreurs</div></div>
+                <div class="col-6"><div class="badge bg-dark w-100">${criticalFiles} Critiques</div></div>
+            </div>
+            <div class="mt-2">
+                <small class="text-muted">${totalFiles} fichier(s) audité(s)</small>
+            </div>
+        `;
+        
+        globalSummaryCard.classList.remove('d-none');
+    }
+
+    // Fonction pour générer le HTML des détails avec support des objets imbriqués (VERSION FINALE)
+    function generateDetailsHtml(details, level = 0) {
+        let html = '<div class="table-responsive"><table class="table table-sm table-borderless mb-0">';
+        
+        Object.entries(details).forEach(([key, value]) => {
+            html += `<tr><th style="width: 30%; font-size: 0.85em; padding-left: ${level * 15}px;" class="text-muted">${key}:</th><td style="font-size: 0.85em;">`;
+            
+            if (Array.isArray(value)) {
+                if (value.length === 0) {
+                    // Array vide
+                    html += `<code>[]</code>`;
+                } else if (typeof value[0] === 'object' && value[0] !== null) {
+                    // Tableau d'objets
+                    html += '<ul class="list-unstyled mb-0">';
+                    value.slice(0, 5).forEach((item, index) => {
+                        const itemId = `array-item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                        html += `
+                            <li class="mb-2">
+                                <button class="btn btn-sm btn-outline-success nested-toggle" 
+                                        data-target="${itemId}" 
+                                        style="padding: 0.2rem 0.5rem; font-size: 0.75em;">
+                                    <i class="fas fa-chevron-right me-1"></i>Élément ${index + 1}
+                                </button>
+                                <div class="nested-content d-none border-start border-2 border-success ps-3 ms-2 mt-2" id="${itemId}">
+                                    ${generateDetailsHtml(item, level + 1)}
+                                </div>
+                            </li>
+                        `;
+                    });
+                    if (value.length > 5) {
+                        html += `<li class="text-muted"><em>... et ${value.length - 5} autres éléments</em></li>`;
+                    }
+                    html += '</ul>';
+                } else {
+                    // Tableau de valeurs simples
+                    if (value.length <= 10) {
+                        html += `<code>[${value.join(', ')}]</code>`;
+                    } else {
+                        html += `<code>[${value.slice(0, 10).join(', ')}, ...]</code> <span class="text-muted"><em>(${value.length} éléments total)</em></span>`;
+                    }
+                }
+            } else if (typeof value === 'object' && value !== null) {
+                // Objet imbriqué
+                const objectKeys = Object.keys(value);
+                
+                if (objectKeys.length === 0) {
+                    // Objet vide
+                    html += `<code>{}</code>`;
+                } else {
+                    // Objet avec contenu - créer une section pliable
+                    const nestedId = `nested-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    html += `
+                        <div>
+                            <button class="btn btn-sm btn-outline-info nested-toggle mb-2" 
+                                    data-target="${nestedId}" 
+                                    style="padding: 0.2rem 0.5rem; font-size: 0.75em;">
+                                <i class="fas fa-chevron-right me-1"></i>Voir détails (${objectKeys.length} propriété${objectKeys.length > 1 ? 's' : ''})
+                            </button>
+                            <div class="nested-content d-none border-start border-2 border-info ps-3 ms-2" id="${nestedId}">
+                                ${generateDetailsHtml(value, level + 1)}
+                            </div>
+                        </div>
+                    `;
+                }
+            } else {
+                // Valeur simple (string, number, boolean, null)
+                if (value === null || value === undefined) {
+                    html += `<span class="text-muted">null</span>`;
+                } else if (typeof value === 'string' && value === '') {
+                    html += `<span class="text-muted">(vide)</span>`;
+                } else {
+                    html += `<code>${value}</code>`;
+                }
+            }
+            
+            html += '</td></tr>';
+        });
+        
+        html += '</table></div>';
+        return html;
+    }
+
+    function generateStatisticsHtml(stats) {
+        let html = `
+            <div class="card mb-3">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-pie me-2"></i>
+                        Statistiques
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p><strong>Total agences :</strong> ${stats.total_agencies || 'N/A'}</p>
+        `;
+        
+        if (stats.fields_completion) {
+            html += `
+                <h6 class="mt-3">Complétude de la donnée</h6>
+                <div class="row">
+            `;
+            
+            Object.entries(stats.fields_completion).forEach(([field, data]) => {
+                html += `
+                    <div class="col-md-6 mb-2">
+                        <div class="d-flex justify-content-between">
+                            <span>${field}</span>
+                            <span>${data.completion_rate}%</span>
+                        </div>
+                        <div class="progress" style="height: 5px;">
+                            <div class="progress-bar" role="progressbar" 
+                                 style="width: ${data.completion_rate}%"></div>
+                        </div>
+                        <small class="text-muted">${data.present}/${data.present + data.missing} présent(s)</small>
+                    </div>
+                `;
+            });
+            
+            html += `
+                </div>
+            `;
+        }
+        
+        html += `
+                </div>
+            </div>
+        `;
+        
+        return html;
+    }
+
+    // Fonction pour exporter les résultats d'audit
+    async function exportAuditResults() {
+        if (!exportButton) return;
+        
+        exportButton.disabled = true;
+        exportButton.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Export en cours...';
+        
+        try {
+            // Créer et déclencher le téléchargement
+            const link = document.createElement('a');
+            link.href = '/audit/export-csv';
+            link.download = ''; // Le nom sera défini par le serveur
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            console.log('Export CSV déclenché');
+            
+        } catch (error) {
+            console.error('Erreur export:', error);
+            alert(`Erreur lors de l'export: ${error.message}`);
+            
+        } finally {
+            exportButton.disabled = false;
+            exportButton.innerHTML = '<i class="fas fa-download me-1"></i>Exporter les audits';
+        }
+    }
+
+    // Fonction pour vérifier le statut des audits en base au chargement
+    async function checkDatabaseAuditStatus() {
+        try {
+            const response = await fetch('/audit/db-status');
+            const status = await response.json();
+            
+            if (response.ok && status.has_results) {
+                // Il y a des résultats en base, activer le bouton d'export
+                if (exportButton) {
+                    exportButton.disabled = false;
+                    exportButton.classList.remove('btn-outline-secondary');
+                    exportButton.classList.add('btn-info');
+                    exportButton.title = `${status.total_audits} audit(s) en base. Dernier: ${new Date(status.latest_audit).toLocaleString()}`;
+                }
+                
+                console.log(`${status.total_audits} résultat(s) d'audit disponible(s) en base.`);
+            } else {
+                // Pas de résultats en base
+                if (exportButton) {
+                    exportButton.disabled = true;
+                    exportButton.title = 'Aucun audit en base - Lancez d\'abord tous les audits';
+                }
+            }
+        } catch (error) {
+            console.error('Erreur vérification BDD:', error);
+        }
+    }
+
+    // Gardez vos autres fonctions existantes : generateStatisticsHtml, generateDetailsHtml, etc.
+    // ... (copiez-les depuis votre code existant)
+
+    // Event listener pour les détails
+    document.addEventListener('click', function(e) {
+        // Gestion des détails principaux (votre code existant)
+        if (e.target.classList.contains('details-toggle') || e.target.closest('.details-toggle')) {
+            const button = e.target.classList.contains('details-toggle') ? e.target : e.target.closest('.details-toggle');
+            const targetId = button.getAttribute('data-target');
+            const detailsDiv = document.getElementById(targetId);
+            const icon = button.querySelector('i');
+            
+            if (detailsDiv.classList.contains('d-none')) {
+                detailsDiv.classList.remove('d-none');
+                icon.className = 'fas fa-chevron-up me-1';
+                button.innerHTML = '<i class="fas fa-chevron-up me-1"></i>Masquer détails';
+            } else {
+                detailsDiv.classList.add('d-none');
+                icon.className = 'fas fa-chevron-down me-1';
+                button.innerHTML = '<i class="fas fa-chevron-down me-1"></i>Voir détails';
+            }
+        }
+        
+        // Nouvelle gestion pour les détails imbriqués
+        if (e.target.classList.contains('nested-toggle') || e.target.closest('.nested-toggle')) {
+            const button = e.target.classList.contains('nested-toggle') ? e.target : e.target.closest('.nested-toggle');
+            const targetId = button.getAttribute('data-target');
+            const nestedDiv = document.getElementById(targetId);
+            const icon = button.querySelector('i');
+            
+            if (nestedDiv.classList.contains('d-none')) {
+                nestedDiv.classList.remove('d-none');
+                icon.className = 'fas fa-chevron-down me-1';
+            } else {
+                nestedDiv.classList.add('d-none');
+                icon.className = 'fas fa-chevron-right me-1';
+            }
+        }
+    });
+
+    // CSS mis à jour pour les détails imbriqués
+    const styles = document.createElement('style');
+    styles.textContent = `
+        .bg-orange { background-color: #fd7e14 !important; }
+        .score-badge { font-weight: bold; font-size: 0.85rem; }
+        .grade-badge { font-weight: bold; font-size: 0.9rem; min-width: 35px; }
+        .progress-container { background: transparent !important; }
+        .progress { background-color: #e9ecef !important; height: 8px !important; }
+        .progress-bar { transition: width 1.2s ease-out !important; }
+        
+        /* Styles pour les détails imbriqués */
+        .nested-toggle {
+            border-color: #0dcaf0 !important;
+            color: #0dcaf0 !important;
+            transition: all 0.2s ease;
+        }
+        
+        .nested-toggle:hover {
+            background-color: #0dcaf0 !important;
+            color: white !important;
+        }
+        
+        /* Boutons pour les éléments d'array */
+        .btn-outline-success.nested-toggle {
+            border-color: #198754 !important;
+            color: #198754 !important;
+        }
+        
+        .btn-outline-success.nested-toggle:hover {
+            background-color: #198754 !important;
+            color: white !important;
+        }
+        
+        .nested-content {
+            background: rgba(13, 202, 240, 0.05);
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        
+        .border-success.nested-content {
+            background: rgba(25, 135, 84, 0.05);
+            border-color: #198754 !important;
+        }
+        
+        .nested-content .table th {
+            background: transparent;
+            font-weight: 500;
+        }
+
+        .gtfs-file-item {
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        .gtfs-file-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .gtfs-file-item.has-results {
+            border-left: 3px solid #0d6efd;
+        }
+
+        /* Amélioration des barres de progression */
+        .progress {
+            background-color: #e9ecef !important;
+            height: 10px !important;
+            border-radius: 0.375rem;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7em !important;
+            font-weight: bold;
+            line-height: 1;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            will-change: width; /* Optimisation pour les animations */
+        }
+
+        .progress-bar.bg-primary {
+            background: linear-gradient(90deg, #0d6efd 0%, #0a58ca 100%) !important;
+        }
+
+        .progress-bar.bg-danger {
+            background: linear-gradient(90deg, #dc3545 0%, #bb2d3b 100%) !important;
+        }
+
+        /* Animation plus douce pour les barres striées */
+        .progress-bar-animated {
+            animation: progress-bar-stripes 1.5s linear infinite;
+        }
+
+        @keyframes progress-bar-stripes {
+            0% { background-position: 1rem 0; }
+            100% { background-position: 0 0; }
+        }
+
+        /* Transition fluide sans saccades */
+        .progress-bar-smooth {
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        }
+    `;
+    document.head.appendChild(styles);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,1942 @@
+{% extends "base.html" %}
+
+{% block title %}Audit - GTFS Audit Tool{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-search"></i> Audit GTFS</h2>
+    <div>
+        <span class="badge bg-success fs-6">{{ session.gtfs_filename }}</span>
+        <a href="{{ url_for('main.index') }}" class="btn btn-outline-secondary ms-2">
+            <i class="fas fa-home"></i> Accueil
+        </a>
+    </div>
+</div>
+
+<!-- Statistiques rapides -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card bg-primary text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-file-alt fa-2x mb-2"></i>
+                <h5>{{ audits|length }}</h5>
+                <small>Types de fichiers</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-info text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-cogs fa-2x mb-2"></i>
+                <h5>{{ audits.values() | map('length') | sum }}</h5>
+                <small>Fonctions d'audit</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-success text-white">
+            <div class="card-body text-center">
+                <i class="fas fa-database fa-2x mb-2"></i>
+                <h5>{{ gtfs_info.values() | map(attribute='rows') | sum }}</h5>
+                <small>Lignes totales</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Encart Enregistrement d'Audits -->
+<div class="card mb-4 shadow-sm">
+    <div class="card-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+        <h5 class="mb-0 text-white">
+            <i class="fas fa-save me-2"></i>Enregistrement d'Audits
+            {% if session.current_project %}
+                <span class="badge bg-white text-primary ms-2">{{ session.current_project.trigramme }}</span>
+            {% endif %}
+        </h5>
+    </div>
+    <div class="card-body">
+        {% if session.current_project %}
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h6 class="mb-2">Configuration des audits</h6>
+                    <p class="text-muted small mb-0">Sélectionnez les fonctions à inclure dans vos audits automatiques</p>
+                </div>
+                <div class="col-md-6">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1">Configurations existantes :</label>
+                            <select class="form-select form-select-sm" id="config-selector" onchange="loadSelectedConfig()">
+                                <option value="">Chargement...</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="btn-group-vertical w-100" role="group">
+                                <button class="btn btn-success btn-sm mb-1" onclick="saveCurrentConfig()">
+                                    <i class="fas fa-save me-1"></i>Nouvelle config
+                                </button>
+                                <button class="btn btn-info btn-sm" onclick="runConfiguredAudit()">
+                                    <i class="fas fa-play me-1"></i>Lancer audit
+                                </button>
+                            </div>
+                        </div>
+    </div>
+</div>
+            </div>
+            
+            <!-- Statut de configuration -->
+            <div id="config-status" class="alert alert-info mt-3" style="display: none;">
+                <i class="fas fa-info-circle me-2"></i>
+                <span id="config-message">Prêt à configurer</span>
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle me-2"></i>
+                <strong>Aucun projet sélectionné</strong> - 
+                <a href="{{ url_for('main.index') }}" class="alert-link">Sélectionner un projet</a> 
+                pour utiliser l'enregistrement d'audits.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Conteneur avec largeur contrainte -->
+          <!-- Accordéon pour les file_types -->
+            <div class="accordion" id="auditAccordion">
+                {% for file_type, audit_functions in audits.items() %}
+                    <div class="accordion-item mb-3 border-0 shadow-sm">
+                        <h2 class="accordion-header" id="heading{{ loop.index }}">
+                            <div class="d-flex align-items-center w-100">
+                                <!-- Checkbox master HORS du bouton -->
+                                <div class="form-check me-3">
+                                    <input class="form-check-input" type="checkbox" 
+                                           id="master_{{ file_type }}" 
+                                           onchange="toggleAllInFileType('{{ file_type }}')">
+                                    <label class="form-check-label visually-hidden" for="master_{{ file_type }}">
+                                        Tout sélectionner pour {{ file_type }}
+                                    </label>
+                                </div>
+                                
+                                <!-- Bouton accordéon -->
+                                <button class="accordion-button collapsed bg-light flex-grow-1" type="button" 
+                                        data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" 
+                                        aria-expanded="false" aria-controls="collapse{{ loop.index }}">
+                                    <div class="d-flex align-items-center w-100">
+                                        <!-- Icône du file_type -->
+                                        <div class="file-type-icon me-3">
+                                            {% if file_type == 'agency' %}
+                                                <i class="fas fa-building text-primary fa-lg"></i>
+                                            {% elif file_type == 'routes' %}
+                                                <i class="fas fa-route text-success fa-lg"></i>
+                                            {% elif file_type == 'trips' %}
+                                                <i class="fas fa-bus text-warning fa-lg"></i>
+                                            {% elif file_type == 'stops' %}
+                                                <i class="fas fa-map-marker-alt text-danger fa-lg"></i>
+                                            {% elif file_type == 'stop_times' %}
+                                                <i class="fas fa-clock text-info fa-lg"></i>
+                                            {% elif file_type == 'calendar' %}
+                                                <i class="fas fa-calendar text-secondary fa-lg"></i>
+                                            {% elif file_type == 'shapes' %}
+                                                <i class="fas fa-draw-polygon text-purple fa-lg"></i>
+                                            {% else %}
+                                                <i class="fas fa-file-alt text-muted fa-lg"></i>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        <!-- Titre et badges -->
+                                        <div class="flex-grow-1">
+                                            <h5 class="mb-1">{{ file_type.replace('_', ' ').title() }}</h5>
+                                            <div class="d-flex align-items-center">
+                                                <span class="badge bg-primary me-2">{{ audit_functions|length }} audit(s)</span>
+                                                {% if gtfs_info.get(file_type + '.txt') %}
+                                                    <span class="badge bg-secondary me-2">{{ gtfs_info[file_type + '.txt'].rows }} lignes</span>
+                                                {% endif %}
+                                                <!-- Badge de statut de sélection -->
+                                                <span id="status_{{ file_type }}" class="badge bg-light text-muted" style="display: none;">
+                                                    0/{{ audit_functions|length }} sélectionné(s)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                        </h2>
+                        <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" 
+                             aria-labelledby="heading{{ loop.index }}" data-bs-parent="#auditAccordion">
+                            <div class="accordion-body p-0">
+                                <!-- Liste des fonctions d'audit -->
+                                <div class="p-3">
+                                    <!-- Liste des fonctions d'audit -->
+                                        {% if file_type == 'file' %}
+                                            <!-- Interface spéciale pour le file_type "file" -->
+                                            <div class="row mb-4">
+                                                <div class="col-md-8">
+                                                    <label class="form-label">
+                                                        <i class="fas fa-file-alt me-2"></i>Sélectionner un fichier GTFS :
+                                                    </label>
+                                                    <select class="form-select" id="gtfs_file_selector_{{ file_type }}" onchange="updateFileSelection('{{ file_type }}')">
+                                                        <option value="">Chargement des fichiers...</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <label class="form-label">&nbsp;</label>
+                                                    <div class="d-grid">
+                                                        <button class="btn btn-primary" onclick="runFileAudit('{{ file_type }}')" id="run_file_button_{{ file_type }}" disabled>
+                                                            <i class="fas fa-play me-2"></i>Auditer ce fichier
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Résultats globaux pour le fichier -->
+                                            <div id="file_results_{{ file_type }}" style="display: none;">
+                                                <div class="alert alert-light border">
+                                                    <h6 class="mb-3">
+                                                        <i class="fas fa-chart-line me-2"></i>Résultats d'audit du fichier
+                                                        <span id="selected_file_name_{{ file_type }}" class="badge bg-secondary ms-2"></span>
+                                                    </h6>
+                                                    <div id="file_details_{{ file_type }}"></div>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Liste des fonctions d'audit file (masquée, pour info) -->
+                                            <div class="mt-4">
+                                                <details>
+                                                    <summary class="text-muted small">
+                                                        <i class="fas fa-list me-1"></i>Fonctions d'audit disponibles ({{ audit_functions|length }})
+                                                    </summary>
+                                                    <div class="mt-2">
+                                                        {% for audit in audit_functions %}
+                                                            <span class="badge bg-light text-dark me-1 mb-1">{{ audit.name }}</span>
+                                                        {% endfor %}
+                                                    </div>
+                                                </details>
+                                            </div>
+                                            
+                                        {% else %}
+                                            <!-- Interface normale pour les autres file_types -->
+                                    {% for audit in audit_functions %}
+                                        <div class="audit-function-card mb-3">
+                                            <div class="card border-0 shadow-sm">
+                                                <div class="card-header bg-white border-0 pb-0">
+                                                    <div class="d-flex justify-content-between align-items-start">
+                                                        <div class="d-flex align-items-start">
+                                                            <!-- Checkbox individuelle -->
+                                                            <div class="form-check me-3 mt-1">
+                                                                <input class="form-check-input" type="checkbox" 
+                                                                       id="audit_{{ file_type }}_{{ audit.function_name }}"
+                                                                       data-file-type="{{ file_type }}"
+                                                                       data-function-name="{{ audit.function_name }}"
+                                                                       onchange="updateFileTypeStatus('{{ file_type }}')">
+                                                            </div>
+                                                            
+                                                            <!-- Informations de la fonction -->
+                                                            <div class="flex-grow-1">
+                                                                <h6 class="mb-1 text-primary">
+                                                                    <i class="fas fa-cog me-2"></i>{{ audit.name }}
+                                                                </h6>
+                                                                <p class="text-muted small mb-2">{{ audit.description }}</p>
+                                                                {% if audit.parameters %}
+                                                                    <span class="badge bg-light text-dark">
+                                                                        <i class="fas fa-sliders-h"></i> {{ audit.parameters|length }} paramètre(s)
+                                                                    </span>
+                                                                {% endif %}
+                                                                
+                                                                <!-- État de configuration -->
+                                                                <div id="config_status_{{ file_type }}_{{ audit.function_name }}" 
+                                                                     class="config-status-indicator mt-1" style="display: none;">
+                                                                    <small class="text-success"><i class="fas fa-check"></i> Activé</small>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div class="d-flex align-items-center">
+                                                            <!-- Score en temps réel -->
+                                                            <span class="score-badge badge me-3" id="score_{{ file_type }}_{{ audit.function_name }}" style="display: none;"></span>
+                                                            
+                                                            <!-- Bouton pour déplier les paramètres -->
+                                                            <button class="btn btn-outline-secondary btn-sm me-2" type="button" 
+                                                                    data-bs-toggle="collapse" data-bs-target="#params_{{ file_type }}_{{ audit.function_name }}" 
+                                                                    aria-expanded="false">
+                                                                <i class="fas fa-chevron-down"></i>
+                                                            </button>
+                                                            
+                                                            <!-- Bouton d'exécution rapide -->
+                                                            <button class="btn btn-primary btn-sm" 
+                                                                    onclick="runSingleAudit('{{ file_type }}', '{{ audit.function_name }}')">
+                                                                <i class="fas fa-play"></i>
+                                                            </button>
+
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <!-- Paramètres et résultats (collapsible) -->
+                                                <div class="collapse" id="params_{{ file_type }}_{{ audit.function_name }}">
+                                                    <div class="card-body">
+                                                        <!-- Paramètres -->
+                                                        {% if audit.parameters %}
+                                                            <div class="mb-3">
+                                                                <h6 class="text-secondary">
+                                                                    <i class="fas fa-sliders-h me-2"></i>Paramètres
+                                                                </h6>
+                                                                <div class="row">
+                                                                    {% for param_name, param_config in audit.parameters.items() %}
+                                                                        <div class="col-md-6 mb-3">
+                                                                            <label class="form-label small fw-bold">{{ param_config.description or param_name }}</label>
+                                                                            
+                                                                            {% if param_config.type == 'slider' %}
+                                                                                <div class="d-flex align-items-center">
+                                                                                    <input type="range" 
+                                                                                           class="form-range me-3" 
+                                                                                           id="{{ file_type }}_{{ audit.function_name }}_{{ param_name }}"
+                                                                                           min="{{ param_config.min }}" 
+                                                                                           max="{{ param_config.max }}" 
+                                                                                           value="{{ param_config.default }}"
+                                                                                           oninput="updateSliderValue('{{ file_type }}_{{ audit.function_name }}_{{ param_name }}')">
+                                                                                    <span id="{{ file_type }}_{{ audit.function_name }}_{{ param_name }}_value" 
+                                                                                          class="badge bg-primary">
+                                                                                        {{ param_config.default }}
+                                                                                    </span>
+                                                                                </div>
+                                                                            
+                                                                            {% elif param_config.type == 'checkbox' %}
+                                                                                <div class="form-check">
+                                                                                    <input type="checkbox" 
+                                                                                           class="form-check-input" 
+                                                                                           id="{{ file_type }}_{{ audit.function_name }}_{{ param_name }}"
+                                                                                           {% if param_config.default %}checked{% endif %}>
+                                                                                    <label class="form-check-label">
+                                                                                        {{ param_config.description or param_name }}
+                                                                                    </label>
+                                                                                </div>
+                                                                            
+                                                                            {% elif param_config.type == 'text' %}
+                                                                                <input type="text" 
+                                                                                       class="form-control form-control-sm" 
+                                                                                       id="{{ file_type }}_{{ audit.function_name }}_{{ param_name }}"
+                                                                                       value="{{ param_config.default or '' }}">
+                                                                            {% endif %}
+                                                                        </div>
+                                                                    {% endfor %}
+                                                                </div>
+                                                            </div>
+                                                        {% endif %}
+                                                        
+                                                        <div id="audit_results_{{ file_type }}_{{ audit.function_name }}" style="display: none;">
+                                                            <div class="alert alert-light border">
+                                                                <h6 class="mb-3">
+                                                                    <i class="fas fa-chart-line me-2"></i>Résultats de la fonction
+                                                                    <span id="selected_function_{{ file_type }}_{{ audit.function_name }}" class="badge bg-secondary ms-2">{{ audit.function_name }}</span>
+                                                                </h6>
+                                                                <div id="function_details_{{ file_type }}_{{ audit.function_name }}"></div>
+                                                            </div>
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    {% endfor %}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+
+
+{% if not audits %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i>
+        Aucune fonction d'audit n'a été trouvée. Vérifiez que vos fonctions sont bien décorées avec @audit_function.
+    </div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Variables globales pour la gestion des configurations
+let currentConfig = {};
+let configChanged = false;
+
+// Fonctions JavaScript existantes (inchangées)
+function updateSliderValue(sliderId) {
+    const slider = document.getElementById(sliderId);
+    const valueSpan = document.getElementById(sliderId + '_value');
+    valueSpan.textContent = slider.value;
+}
+
+function getParameters(fileType, functionName) {
+    const parameters = {};
+    const elements = document.querySelectorAll(`[id^="${fileType}_${functionName}_"]:not([id*="_value"])`);
+    
+    elements.forEach(element => {
+        const paramName = element.id.split('_').slice(2).join('_');
+        
+        if (element.type === 'range' || element.type === 'text') {
+            parameters[paramName] = element.type === 'range' ? parseFloat(element.value) : element.value;
+        } else if (element.type === 'checkbox') {
+            parameters[paramName] = element.checked;
+        }
+    });
+    
+    return parameters;
+}
+
+function updateFileTypeStatus(fileType) {
+    const checkboxes = document.querySelectorAll(`input[data-file-type="${fileType}"]`);
+    const masterCheckbox = document.getElementById(`master_${fileType}`);
+    const statusBadge = document.getElementById(`status_${fileType}`);
+    
+    let checkedCount = 0;
+    checkboxes.forEach(cb => {
+        if (cb.checked) checkedCount++;
+        
+        // Mettre à jour l'indicateur de statut individuel SELON LA CONFIG PRÉCÉDENTE
+        const statusIndicator = document.getElementById(`config_status_${cb.dataset.fileType}_${cb.dataset.functionName}`);
+        if (statusIndicator) {
+            const wasActiveBefore = currentConfig[cb.dataset.fileType] && currentConfig[cb.dataset.fileType][cb.dataset.functionName];
+            const isActiveNow = cb.checked;
+            
+            if (wasActiveBefore !== isActiveNow) {
+                statusIndicator.style.display = 'block';
+                if (isActiveNow) {
+                    statusIndicator.innerHTML = '<small class="text-success"><i class="fas fa-plus"></i> Activé</small>';
+                } else {
+                    statusIndicator.innerHTML = '<small class="text-danger"><i class="fas fa-minus"></i> Désactivé</small>';
+                }
+            } else {
+                statusIndicator.style.display = 'none';
+            }
+        }
+    });
+    
+    // Master cochée SEULEMENT si TOUTES sont cochées
+    masterCheckbox.indeterminate = false;
+    if (checkedCount === checkboxes.length && checkedCount > 0) {
+        masterCheckbox.checked = true;  // Toutes cochées
+    } else {
+        masterCheckbox.checked = false; // Pas toutes cochées
+    }
+    
+    // Mettre à jour le badge de statut
+    statusBadge.style.display = 'inline-block';
+    statusBadge.textContent = `${checkedCount}/${checkboxes.length} sélectionné(s)`;
+    
+    // Marquer la configuration comme modifiée
+    configChanged = true;
+    updateConfigStatus();
+}
+
+// Charger la liste des configurations
+function loadConfigurationsList() {
+    const selector = document.getElementById('config-selector');
+    
+    fetch('/api/config/list')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            selector.innerHTML = '<option value="">-- Sélectionner une configuration --</option>';
+            
+            if (data.configurations.length === 0) {
+                selector.innerHTML = '<option value="">Aucune configuration</option>';
+                return;
+            }
+            
+            data.configurations.forEach(config => {
+                const option = document.createElement('option');
+                option.value = config.config_id;
+                option.textContent = `${config.date_configuration}${config.is_latest ? ' (dernière)' : ''}`;
+                selector.appendChild(option);
+            });
+            
+            // Sélectionner automatiquement la dernière
+            if (data.configurations.length > 0) {
+                selector.value = data.configurations[0].config_id;
+                loadSelectedConfig();
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        selector.innerHTML = '<option value="">Erreur de chargement</option>';
+    });
+}
+
+// Charger la configuration sélectionnée
+function loadSelectedConfig() {
+    const selector = document.getElementById('config-selector');
+    const configId = selector.value;
+    
+    if (!configId) return;
+    
+    fetch(`/api/config/load/${configId}`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentConfig = data.config;
+            
+            // Réinitialiser toutes les checkboxes
+            document.querySelectorAll('input[data-file-type]').forEach(cb => {
+                cb.checked = false;
+            });
+            
+            // Appliquer la configuration
+            Object.keys(currentConfig).forEach(fileType => {
+                Object.keys(currentConfig[fileType]).forEach(functionName => {
+                    const checkbox = document.getElementById(`audit_${fileType}_${functionName}`);
+                    if (checkbox) {
+                        checkbox.checked = currentConfig[fileType][functionName];
+                    }
+                });
+                updateFileTypeStatus(fileType);
+            });
+            
+            configChanged = false;
+            showConfigStatus('success', `Configuration du ${data.date_configuration} chargée`);
+        } else {
+            showConfigStatus('danger', 'Erreur lors du chargement: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        showConfigStatus('danger', 'Erreur de communication');
+    });
+}
+
+// Fonction utilitaire pour afficher les statuts
+function showConfigStatus(type, message) {
+    const statusDiv = document.getElementById('config-status');
+    const messageSpan = document.getElementById('config-message');
+    
+    statusDiv.className = `alert alert-${type} mt-3`;
+    statusDiv.style.display = 'block';
+    messageSpan.innerHTML = `<i class="fas fa-${type === 'success' ? 'check' : 'exclamation-triangle'} me-2"></i>${message}`;
+    
+    setTimeout(() => {
+        statusDiv.style.display = 'none';
+    }, 3000);
+}
+
+// Fonction pour toggler toutes les checkboxes d'un file_type
+function toggleAllInFileType(fileType) {
+    const masterCheckbox = document.getElementById(`master_${fileType}`);
+    const checkboxes = document.querySelectorAll(`input[data-file-type="${fileType}"]`);
+    
+    checkboxes.forEach(cb => {
+        cb.checked = masterCheckbox.checked;
+    });
+    
+    updateFileTypeStatus(fileType);
+}
+
+// Fonction pour mettre à jour le statut de configuration
+function updateConfigStatus() {
+    const statusDiv = document.getElementById('config-status');
+    const messageSpan = document.getElementById('config-message');
+    
+    if (configChanged) {
+        statusDiv.className = 'alert alert-warning mt-3';
+        statusDiv.style.display = 'block';
+        messageSpan.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i>Configuration modifiée - Pensez à sauvegarder';
+    } else {
+        statusDiv.style.display = 'none';
+    }
+}
+
+
+// Fonction pour charger la configuration actuelle
+function loadCurrentConfig() {
+    fetch('/api/config/current')
+    .then(response => response.json())
+    .then(data => {
+        if (data.error && data.error.includes('projet')) {
+            // Pas de projet sélectionné - ne rien faire silencieusement
+            console.log('Aucun projet sélectionné');
+            return;
+        }
+        
+        if (data.success && data.has_config) {
+            currentConfig = data.config;
+            
+            // Appliquer la configuration aux checkboxes
+            Object.keys(currentConfig).forEach(fileType => {
+                Object.keys(currentConfig[fileType]).forEach(functionName => {
+                    const checkbox = document.getElementById(`audit_${fileType}_${functionName}`);
+                    if (checkbox) {
+                        checkbox.checked = currentConfig[fileType][functionName];
+                    }
+                });
+                updateFileTypeStatus(fileType);
+            });
+            
+            configChanged = false;
+            const statusDiv = document.getElementById('config-status');
+            const messageSpan = document.getElementById('config-message');
+            statusDiv.className = 'alert alert-success mt-3';
+            statusDiv.style.display = 'block';
+            messageSpan.innerHTML = `<i class="fas fa-check me-2"></i>Configuration chargée (${data.date_configuration})`;
+            
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        // Ne plus afficher d'alert pour éviter de gêner l'utilisateur
+    });
+}
+
+// Fonction pour sauvegarder la configuration actuelle
+function saveCurrentConfig() {
+    const selectedFunctions = {};
+    
+    // Collecter toutes les sélections
+    document.querySelectorAll('input[data-file-type]').forEach(checkbox => {
+        const fileType = checkbox.dataset.fileType;
+        const functionName = checkbox.dataset.functionName;
+        
+        if (!selectedFunctions[fileType]) {
+            selectedFunctions[fileType] = {};
+        }
+        selectedFunctions[fileType][functionName] = checkbox.checked;
+    });
+    
+    fetch('/api/config/save', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            selected_functions: selectedFunctions
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Mettre à jour currentConfig avec la nouvelle configuration
+            currentConfig = selectedFunctions;
+            configChanged = false;
+            
+            // Mettre à jour tous les indicateurs
+            Object.keys(selectedFunctions).forEach(fileType => {
+                updateFileTypeStatus(fileType);
+            });
+            
+            const statusDiv = document.getElementById('config-status');
+            const messageSpan = document.getElementById('config-message');
+            statusDiv.className = 'alert alert-success mt-3';
+            statusDiv.style.display = 'block';
+            messageSpan.innerHTML = '<i class="fas fa-save me-2"></i>Configuration sauvegardée avec succès';
+            
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        } else {
+            alert('Erreur lors de la sauvegarde: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        alert('Erreur lors de la sauvegarde');
+    });
+    setTimeout(() => {
+        loadConfigurationsList(); // Recharger la liste
+    }, 3500);
+}
+
+// Fonctions existantes pour l'exécution des audits
+function runAudit(fileType, functionName) {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    
+    const parameters = getParameters(fileType, functionName);
+    
+    fetch('/api/audit/run', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            file_type: fileType,
+            function_name: functionName,
+            parameters: parameters
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const resultsContainer = document.getElementById(`results_${fileType}_${functionName}`);
+        const scoreSpan = document.getElementById(`score_${fileType}_${functionName}`);
+        const detailsDiv = document.getElementById(`details_${fileType}_${functionName}`);
+        
+        if (data.success) {
+            const score = data.score;
+            let scoreClass = 'bg-danger';
+            if (score >= 90) scoreClass = 'bg-success';
+            else if (score >= 70) scoreClass = 'bg-warning';
+            else if (score >= 50) scoreClass = 'bg-info';
+            
+            scoreSpan.className = `score-badge badge ${scoreClass}`;
+            scoreSpan.textContent = `${score}%`;
+            scoreSpan.style.display = 'inline-block';
+            
+            let detailsHtml = `<div class="mb-2"><strong>Problèmes détectés :</strong> ${data.problem_count}</div>`;
+            
+            if (data.problem_ids && data.problem_ids.length > 0) {
+                detailsHtml += '<div class="mt-2">';
+                detailsHtml += '<button class="btn btn-sm btn-outline-secondary" onclick="toggleProblems(\'' + fileType + '_' + functionName + '\')">Voir les IDs problématiques</button>';
+                detailsHtml += '<div id="problems_' + fileType + '_' + functionName + '" class="mt-2" style="display: none;">';
+                detailsHtml += '<div class="alert alert-warning"><small>';
+                detailsHtml += data.problem_ids.join(', ');
+                detailsHtml += '</small></div></div>';
+                detailsHtml += '</div>';
+            }
+            
+            detailsDiv.innerHTML = detailsHtml;
+            resultsContainer.style.display = 'block';
+        } else {
+            scoreSpan.className = 'score-badge badge bg-danger';
+            scoreSpan.textContent = 'Erreur';
+            scoreSpan.style.display = 'inline-block';
+            detailsDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            resultsContainer.style.display = 'block';
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        const resultsContainer = document.getElementById(`results_${fileType}_${functionName}`);
+        const scoreSpan = document.getElementById(`score_${fileType}_${functionName}`);
+        const detailsDiv = document.getElementById(`details_${fileType}_${functionName}`);
+        
+        scoreSpan.className = 'score-badge badge bg-danger';
+        scoreSpan.textContent = 'Erreur';
+        scoreSpan.style.display = 'inline-block';
+        detailsDiv.innerHTML = '<div class="alert alert-danger">Erreur de communication avec le serveur</div>';
+        resultsContainer.style.display = 'block';
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
+}
+
+function toggleProblems(auditId) {
+    const problemsDiv = document.getElementById('problems_' + auditId);
+    const button = event.target;
+    
+    if (problemsDiv.style.display === 'none') {
+        problemsDiv.style.display = 'block';
+        button.textContent = 'Masquer les IDs';
+    } else {
+        problemsDiv.style.display = 'none';
+        button.textContent = 'Voir les IDs problématiques';
+    }
+}
+
+function runConfiguredAudit() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Exécution...';
+    
+    fetch('/run_configured_audit', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ ' + data.message);
+        } else {
+            alert('❌ Erreur: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        alert('❌ Erreur de communication');
+    })
+    .finally(() => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+    });
+}
+
+function runAllAuditsForFileType(fileType) {
+    if (!confirm(`Êtes-vous sûr de vouloir lancer tous les audits pour ${fileType}?`)) {
+        return;
+    }
+    
+    const button = event.target;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Exécution...';
+    
+    setTimeout(() => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+        alert(`Tous les audits pour ${fileType} ont été lancés!`);
+    }, 2000);
+}
+
+function expandAllInFileType(fileType) {
+    const collapses = document.querySelectorAll(`[id^="params_${fileType}_"]`);
+    collapses.forEach(collapse => {
+        const bsCollapse = new bootstrap.Collapse(collapse, {show: true});
+    });
+}
+
+// Charger la liste des fichiers GTFS disponibles
+function loadGTFSFiles(fileType) {
+    const selector = document.getElementById(`gtfs_file_selector_${fileType}`);
+    
+    fetch('/api/gtfs/files')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            selector.innerHTML = '<option value="">-- Sélectionner un fichier --</option>';
+            
+            data.files.forEach(file => {
+                const option = document.createElement('option');
+                option.value = file.name;
+                option.textContent = `${file.name} (${file.rows} lignes)`;
+                selector.appendChild(option);
+            });
+        } else {
+            selector.innerHTML = '<option value="">Erreur de chargement</option>';
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        selector.innerHTML = '<option value="">Erreur de communication</option>';
+    });
+}
+
+// Mettre à jour la sélection de fichier
+function updateFileSelection(fileType) {
+    const selector = document.getElementById(`gtfs_file_selector_${fileType}`);
+    const button = document.getElementById(`run_file_button_${fileType}`);
+    const fileName = document.getElementById(`selected_file_name_${fileType}`);
+    
+    if (selector.value) {
+        button.disabled = false;
+        fileName.textContent = selector.value;
+    } else {
+        button.disabled = true;
+        fileName.textContent = '';
+    }
+}
+
+
+async function runSingleAudit(fileType, auditName, gtfsFile = null) {
+    const resultBoxId = `audit_results_${fileType}_${auditName}`;
+    const detailsDivId = `function_details_${fileType}_${auditName}`;
+    const collapseId = `params_${fileType}_${auditName}`;
+
+    const resultsContainer = document.getElementById(resultBoxId);
+    const detailsDiv = document.getElementById(detailsDivId);
+    const collapseElement = document.getElementById(collapseId);
+
+    // Ouvrir automatiquement le collapse avant de lancer l'audit
+    if (collapseElement) {
+        // Vérifier si le collapse n'est pas déjà ouvert
+        if (!collapseElement.classList.contains('show')) {
+            const bsCollapse = new bootstrap.Collapse(collapseElement);
+            bsCollapse.show();
+        }
+    }
+
+    try {
+        const response = await fetch('/api/audit/run-single-audit', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({file_type: fileType, audit_name: auditName, gtfs_file: gtfsFile})
+        });
+
+        const data = await response.json();
+
+        if (!data.success) throw new Error(data.error || 'Erreur API');
+        // Afficher les résultats dans le bon encart
+        if (data.success && data.result) {  // ← Vérifier que data.result existe
+            let html = '';
+            console.log(data);
+            html += formatAuditResult(auditName, data.result)
+            detailsDiv.innerHTML = html;
+            resultsContainer.style.display = 'block';
+        } else {
+            detailsDiv.innerHTML = '<div class="alert alert-warning">Aucun résultat retourné</div>';
+            resultsContainer.style.display = 'block';
+        }
+
+    } catch (error) {
+        console.error('Erreur lors de l\'audit:', error);
+        detailsDiv.innerHTML = `<div class="alert alert-danger">Erreur : ${error.message}</div>`;
+        resultsContainer.style.display = 'block';
+    }
+}
+
+
+
+async function runSingleAudit(fileType, auditName, gtfsFile = null) {
+    const resultBoxId = `audit_results_${fileType}_${auditName}`;
+    const detailsDivId = `function_details_${fileType}_${auditName}`;
+    const collapseId = `params_${fileType}_${auditName}`;
+
+    const resultsContainer = document.getElementById(resultBoxId);
+    const detailsDiv = document.getElementById(detailsDivId);
+    const collapseElement = document.getElementById(collapseId);
+
+    // Ouvrir automatiquement le collapse avant de lancer l'audit
+    if (collapseElement) {
+        if (!collapseElement.classList.contains('show')) {
+            const bsCollapse = new bootstrap.Collapse(collapseElement);
+            bsCollapse.show();
+        }
+    }
+
+    try {
+        const response = await fetch('/api/audit/run-single-audit', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({file_type: fileType, audit_name: auditName, gtfs_file: gtfsFile})
+        });
+
+        const data = await response.json();
+
+        if (!data.success) throw new Error(data.error || 'Erreur API');
+        
+        if (data.success && data.results) {  // ← "results" avec un S
+            let html = formatAuditResult(auditName, data.results);  // ← "results" avec un S
+            detailsDiv.innerHTML = html;
+            resultsContainer.style.display = 'block';
+        } else {
+            detailsDiv.innerHTML = '<div class="alert alert-warning">Aucun résultat retourné</div>';
+            resultsContainer.style.display = 'block';
+        }
+
+    } catch (error) {
+        console.error('Erreur lors de l\'audit:', error);
+        detailsDiv.innerHTML = `<div class="alert alert-danger">Erreur : ${error.message}</div>`;
+        resultsContainer.style.display = 'block';
+    }
+}
+
+async function runFileAudit(fileType) {
+    const fileSelector = document.getElementById(`gtfs_file_selector_${fileType}`);
+    const runButton = document.getElementById(`run_file_button_${fileType}`);
+    const resultsContainer = document.getElementById(`file_results_${fileType}`);
+    const detailsDiv = document.getElementById(`file_details_${fileType}`);
+    const selectedFileNameSpan = document.getElementById(`selected_file_name_${fileType}`);
+
+    // Vérifier qu'un fichier est sélectionné
+    const selectedFile = fileSelector?.value;
+    if (!selectedFile) {
+        alert('Veuillez sélectionner un fichier GTFS avant de lancer l\'audit.');
+        return;
+    }
+
+    // Désactiver le bouton pendant l'exécution
+    if (runButton) {
+        runButton.disabled = true;
+        runButton.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Audit en cours...';
+    }
+
+    // Afficher le conteneur de résultats et mettre à jour le nom du fichier
+    if (selectedFileNameSpan) {
+        selectedFileNameSpan.textContent = selectedFile;
+    }
+    if (resultsContainer) {
+        resultsContainer.style.display = 'block';
+    }
+
+    // Afficher un message de chargement
+    if (detailsDiv) {
+        detailsDiv.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Chargement...</span>
+                </div>
+                <p class="mt-2 text-muted">Audit du fichier en cours...</p>
+            </div>
+        `;
+    }
+
+    try {
+        const response = await fetch('/api/audit/run-file', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                file_type: fileType,
+                gtfs_file: selectedFile
+            })
+        });
+
+        const data = await response.json();
+
+        if (!data.success) {
+            throw new Error(data.error || 'Erreur lors de l\'audit du fichier');
+        }
+        
+        // Traitement des résultats
+        if (data.success && data.results) {
+            let html = '<div class="audit-file-results">';
+            
+            // Compteur de résultats
+            const totalAudits = Object.keys(data.results).length;
+            const successfulAudits = Object.values(data.results).filter(result => !result.error).length;
+            const failedAudits = totalAudits - successfulAudits;
+            
+            // En-tête avec statistiques
+            html += `
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="card bg-primary text-white text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">${totalAudits}</h5>
+                                <p class="card-text">Audits exécutés</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-success text-white text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">${successfulAudits}</h5>
+                                <p class="card-text">Réussis</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-danger text-white text-center">
+                            <div class="card-body">
+                                <h5 class="card-title">${failedAudits}</h5>
+                                <p class="card-text">Échoués</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            html += '<div class="audit-results-list">';
+
+
+            Object.entries(data.results).forEach(([auditName, result]) => {
+                // Afficher le nom de la fonction avant le résultat
+                html += `
+                    <div class="audit-function-section mb-4">
+                        <h5 class="audit-function-title border-bottom pb-2 mb-3">
+                            <i class="fas fa-cog me-2 text-primary"></i>
+                            ${auditName}
+                        </h5>
+                        <div class="audit-function-result">
+                            ${formatAuditResult(auditName, result)}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            detailsDiv.innerHTML = html;
+            
+        } else {
+            detailsDiv.innerHTML = '<div class="alert alert-warning">Aucun résultat retourné par l\'audit du fichier</div>';
+        }
+
+    } catch (error) {
+        console.error('Erreur lors de l\'audit du fichier:', error);
+        
+        if (detailsDiv) {
+            detailsDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <h6><i class="fas fa-exclamation-triangle me-2"></i>Erreur lors de l'audit</h6>
+                    <p class="mb-0">${error.message}</p>
+                </div>
+            `;
+        }
+        
+    } finally {
+        // Réactiver le bouton
+        if (runButton) {
+            runButton.disabled = false;
+            runButton.innerHTML = '<i class="fas fa-play me-2"></i>Auditer ce fichier';
+        }
+    }
+}
+
+
+function depformatAuditResult(functionName, result) {
+    let html = '';
+
+    if (!result) {
+        html += `<p>Aucun résultat</p></div>`;
+        return html;
+    }
+
+    // Affichage du score (en haut)
+    if ('score' in result) {
+        const score = result.score;
+
+        if (!score || (typeof score === 'object' && 'error' in score)) {
+            html += `<div class="text-danger fw-bold">Fonction non fonctionnelle</div>`;
+        } else if (typeof score === 'number') {
+            html += `<div class="stat-detail d-flex justify-content-between">
+                        <span class="stat-detail-label">Score</span>
+                        <span class="stat-detail-value">${score.toLocaleString()}</span>
+                    </div>`;
+        } else if (typeof score === 'object') {
+            Object.entries(score).forEach(([key, value]) => {
+                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    // Objet imbriqué dans score
+                    html += `<div class="mt-3">
+                                <strong class="text-secondary">${formatKey(key)}</strong>
+                                <div class="ms-3 mt-2">`;
+                    Object.entries(value).forEach(([subKey, subValue]) => {
+                        html += `<div class="stat-detail d-flex justify-content-between">
+                                    <span class="stat-detail-label small">${formatKey(subKey)}</span>
+                                    <span class="stat-detail-value">${formatValue(subValue)}</span>
+                                </div>`;
+                    });
+                    html += `</div></div>`;
+                } else if (Array.isArray(value)) {
+                    html += `<div class="stat-detail d-flex align-items-start">
+                                <span class="stat-detail-label small">${formatKey(key)}</span>
+                                <span class="stat-detail-value">`;
+                    value.forEach((item) => {
+                        html += `<div>• ${formatValue(item)}</div>`;
+                    });
+                    html += `</span></div>`;
+                } else {
+                    html += `<div class="stat-detail d-flex justify-content-between">
+                                <span class="stat-detail-label small">${formatKey(key)}</span>
+                                <span class="stat-detail-value">${formatValue(value)}</span>
+                            </div>`;
+                }
+            });
+        } else {
+            html += `<div class="stat-detail d-flex justify-content-between">
+                        <span class="stat-detail-label">Score</span>
+                        <span class="stat-detail-value">${formatValue(score)}</span>
+                    </div>`;
+        }
+    } else {
+        html += `<p class="text-muted">Aucun score disponible</p>`;
+    }
+
+    // Affichage de problem_ids uniquement s’il y en a (après score)
+    if ('problem_ids' in result && Array.isArray(result.problem_ids) && result.problem_ids.length > 0) {
+        html += `<div class="mt-3">
+                    <strong>Problèmes détectés :</strong>
+                    <ul>`;
+        result.problem_ids.forEach(pid => {
+            html += `<li>${pid}</li>`;
+        });
+        html += `</ul></div>`;
+    }
+
+    // Affichage d'une erreur éventuelle
+    if ('error' in result) {
+        html += `<div class="alert alert-danger mt-2">${result.error}</div>`;
+    }
+
+    html += `</div>`; // fermeture de la carte principale
+
+    return html;
+}
+
+function tempformatAuditResult(functionName, result) {
+    let html = '';
+    
+    if (!result) {
+        html += `<p>Aucun résultat</p>`;
+        return html;
+    }
+    
+    // Status avec badge coloré
+    if (result.status) {
+        const statusClass = {
+            'success': 'bg-success',
+            'warning': 'bg-warning', 
+            'error': 'bg-danger'
+        }[result.status] || 'bg-secondary';
+        
+        html += `<div class="mb-3">
+                    <span class="badge ${statusClass}">${result.status.toUpperCase()}</span>
+                 </div>`;
+    }
+    
+    // Issues
+    if (result.issues && result.issues.length > 0) {
+        html += `<div class="mb-3">
+                    <strong>Problèmes détectés :</strong>
+                    <ul class="mt-2">`;
+        result.issues.forEach(issue => {
+            if (typeof issue === 'string') {
+                html += `<li>${issue}</li>`;
+            } else if (issue.message) {
+                html += `<li>${issue.message}</li>`;
+            }
+        });
+        html += `</ul></div>`;
+    }
+    
+    // Result (métriques principales)
+    if (result.result && Object.keys(result.result).length > 0) {
+        html += `<div class="mb-3">
+                    <strong>Résultats :</strong>
+                    <div class="mt-2">`;
+        
+        Object.entries(result.result).forEach(([key, value]) => {
+            if (typeof value === 'object' && !Array.isArray(value)) {
+                // Objet imbriqué
+                html += `<div class="mb-2">
+                            <em>${formatKey(key)} :</em>
+                            <div class="ms-3">`;
+                Object.entries(value).forEach(([subKey, subValue]) => {
+                    html += `<div>${formatKey(subKey)}: ${formatValue(subValue)}</div>`;
+                });
+                html += `</div></div>`;
+            } else {
+                html += `<div>${formatKey(key)}: ${formatValue(value)}</div>`;
+            }
+        });
+        html += `</div></div>`;
+    }
+    
+    // Recommendations
+    if (result.recommendations && result.recommendations.length > 0) {
+        html += `<div class="mb-3">
+                    <strong>Recommandations :</strong>
+                    <ul class="mt-2">`;
+        result.recommendations.forEach(rec => {
+            html += `<li>${rec}</li>`;
+        });
+        html += `</ul></div>`;
+    }
+    
+    return html;
+}
+
+function formatAuditResult(functionName, result) {
+    if (!result) {
+        return '<div class="alert alert-warning">Aucun résultat disponible</div>';
+    }
+    
+    let html = '<div class="audit-result-container">';
+    
+    // ========== EN-TÊTE AVEC STATUS ==========
+    html += '<div class="audit-header mb-4">';
+    
+    if (result.status) {
+        const statusConfig = {
+            'success': { class: 'success', icon: 'fas fa-check-circle', text: 'Succès', bgClass: 'bg-success' },
+            'warning': { class: 'warning', icon: 'fas fa-exclamation-triangle', text: 'Attention', bgClass: 'bg-warning text-dark' },
+            'error': { class: 'danger', icon: 'fas fa-times-circle', text: 'Erreur', bgClass: 'bg-danger' }
+        };
+        
+        const config = statusConfig[result.status] || { class: 'secondary', icon: 'fas fa-info-circle', text: result.status, bgClass: 'bg-secondary' };
+        
+        html += `
+            <div class="status-header-card border-${config.class} border-start border-4 p-3 bg-light rounded">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <span class="badge ${config.bgClass} me-2 px-3 py-2 fs-6">
+                            <i class="${config.icon} me-2"></i>${config.text}
+                        </span>
+                        <h5 class="mb-0 text-dark">${functionName}</h5>
+                    </div>
+                    <div class="status-icon text-${config.class}">
+                        <i class="${config.icon} fa-2x opacity-50"></i>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    html += '</div>'; // fin audit-header
+    
+    // ========== ISSUES (SI PRÉSENTES) ==========
+    if (result.issues && Array.isArray(result.issues) && result.issues.length > 0) {
+        html += '<div class="audit-issues mb-4">';
+        html += '<h6 class="border-bottom pb-2 mb-3"><i class="fas fa-exclamation-triangle text-warning me-2"></i>Problèmes détectés</h6>';
+        
+        // Grouper les issues par type
+        const issuesByType = {};
+        result.issues.forEach(issue => {
+            const type = issue.type || 'other';
+            if (!issuesByType[type]) issuesByType[type] = [];
+            issuesByType[type].push(issue);
+        });
+        
+        Object.entries(issuesByType).forEach(([type, issues]) => {
+            const typeIcons = {
+                'missing_field': 'fas fa-minus-circle text-danger',
+                'invalid_format': 'fas fa-exclamation-circle text-warning', 
+                'duplicate_data': 'fas fa-copy text-info',
+                'inconsistent_data': 'fas fa-question-circle text-warning',
+                'other': 'fas fa-info-circle text-muted'
+            };
+            
+            const icon = typeIcons[type] || typeIcons['other'];
+            const typeLabel = type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            
+            html += `<div class="issue-type-group mb-3">`;
+            html += `<div class="issue-type-header d-flex align-items-center mb-2">`;
+            html += `<i class="${icon} me-2"></i>`;
+            html += `<strong>${typeLabel}</strong>`;
+            html += `<span class="badge bg-light text-dark ms-2">${issues.length}</span>`;
+            html += `</div>`;
+            
+            issues.forEach((issue, index) => {
+                const issueId = `issue_${type}_${index}`;
+                html += `<div class="issue-item border-start border-3 border-primary ps-3 mb-2">`;
+                
+                // Message principal
+                if (issue.message) {
+                    html += `<div class="issue-message">${issue.message}</div>`;
+                }
+                
+                // Détails (field, count)
+                const details = [];
+                if (issue.field) details.push(`Champ: <strong>${issue.field}</strong>`);
+                if (issue.count !== undefined) details.push(`Nombre: <strong>${issue.count}</strong>`);
+                
+                if (details.length > 0) {
+                    html += `<div class="issue-details small text-muted mt-1">${details.join(' • ')}</div>`;
+                }
+                
+                // IDs affectés (collapsible)
+                if (issue.affected_ids && Array.isArray(issue.affected_ids) && issue.affected_ids.length > 0) {
+                    html += `
+                        <div class="mt-2">
+                            <button class="btn btn-outline-secondary btn-sm" type="button" 
+                                    data-bs-toggle="collapse" data-bs-target="#${issueId}" 
+                                    aria-expanded="false">
+                                <i class="fas fa-eye me-1"></i>Voir les IDs (${issue.affected_ids.length})
+                            </button>
+                            <div class="collapse mt-2" id="${issueId}">
+                                <div class="alert alert-light small">
+                                    <div class="affected-ids-container" style="max-height: 150px; overflow-y: auto;">
+                                        ${issue.affected_ids.map(id => `<span class="badge bg-light text-dark me-1 mb-1">${id}</span>`).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += `</div>`; // fin issue-item
+            });
+            
+            html += `</div>`; // fin issue-type-group
+        });
+        
+        html += '</div>'; // fin audit-issues
+    }
+    
+    // ========== RÉSULTATS THÉMATIQUES ==========
+    if (result.result && typeof result.result === 'object' && Object.keys(result.result).length > 0) {
+        html += '<div class="audit-results mb-4">';
+        html += `
+            <div class="section-header d-flex align-items-center mb-3">
+                <div class="section-icon me-3">
+                    <i class="fas fa-chart-line text-primary fa-lg"></i>
+                </div>
+                <h5 class="mb-0 text-dark">Résultats détaillés</h5>
+            </div>
+        `;
+        
+        html += '<div class="row g-3">';
+        
+        Object.entries(result.result).forEach(([key, value]) => {
+            html += '<div class="col-lg-6">';
+            html += '<div class="result-card h-100 border-0 shadow-sm rounded-3 overflow-hidden">';
+            
+            // En-tête de la carte avec couleur
+            html += `
+                <div class="card-header bg-primary bg-gradient text-white py-2">
+                    <h6 class="mb-0 fw-bold">${formatKey(key)}</h6>
+                </div>
+            `;
+            
+            html += '<div class="card-body p-3">';
+            
+            if (typeof value === 'object' && !Array.isArray(value)) {
+                // Objet imbriqué - métriques en tableau
+                html += '<div class="metrics-table">';
+                Object.entries(value).forEach(([subKey, subValue], index, arr) => {
+                    const isLast = index === arr.length - 1;
+                    html += `
+                        <div class="metric-row d-flex justify-content-between align-items-center py-2 ${!isLast ? 'border-bottom border-light' : ''}">
+                            <span class="metric-label text-muted">${formatKey(subKey)}</span>
+                            <span class="metric-value fw-bold text-dark">${formatValue(subValue)}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            } else if (Array.isArray(value)) {
+                // Tableau - liste avec puces colorées
+                html += '<div class="list-container">';
+                value.forEach(item => {
+                    html += `
+                        <div class="list-item d-flex align-items-start mb-2">
+                            <span class="bullet-point bg-primary rounded-circle me-2 mt-1" style="width: 6px; height: 6px;"></span>
+                            <span class="list-text text-dark">${formatValue(item)}</span>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            } else {
+                // Valeur simple - affichage mis en valeur
+                html += `
+                    <div class="single-value-container text-center py-3">
+                        <div class="value-display">
+                            <div class="display-4 fw-bold text-primary mb-1">${formatValue(value)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>'; // fin card-body
+            html += '</div>'; // fin result-card
+            html += '</div>'; // fin col
+        });
+        
+        html += '</div>'; // fin row
+        html += '</div>'; // fin audit-results
+    }
+    
+    // ========== EXPLANATION (COLLAPSIBLE) ==========
+    if (result.explanation && typeof result.explanation === 'object') {
+        const explanationId = `explanation_${Math.random().toString(36).substr(2, 9)}`;
+        
+        html += `
+            <div class="audit-explanation mb-4">
+                <div class="explanation-toggle">
+                    <button class="btn btn-outline-info rounded-pill px-4" type="button" 
+                            data-bs-toggle="collapse" data-bs-target="#${explanationId}" 
+                            aria-expanded="false">
+                        <i class="fas fa-info-circle me-2"></i>À propos de cet audit
+                        <i class="fas fa-chevron-down ms-2 collapse-icon"></i>
+                    </button>
+                </div>
+                <div class="collapse mt-3" id="${explanationId}">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-info bg-gradient text-white">
+                            <h6 class="mb-0"><i class="fas fa-lightbulb me-2"></i>Informations détaillées</h6>
+                        </div>
+                        <div class="card-body bg-light">
+        `;
+        
+        if (result.explanation.purpose) {
+            html += `
+                <div class="purpose-section mb-3 p-3 bg-white rounded border-start border-4 border-info">
+                    <h6 class="text-info mb-2"><i class="fas fa-target me-2"></i>Objectif</h6>
+                    <p class="mb-0 text-dark">${result.explanation.purpose}</p>
+                </div>
+            `;
+        }
+        
+        // Autres champs d'explanation
+        const otherFields = Object.entries(result.explanation).filter(([key]) => key !== 'purpose');
+        if (otherFields.length > 0) {
+            html += '<div class="other-explanations">';
+            otherFields.forEach(([key, value]) => {
+                html += `
+                    <div class="explanation-item mb-2 p-2 bg-white rounded">
+                        <strong class="text-secondary">${formatKey(key)} :</strong> 
+                        <span class="text-dark">${formatValue(value)}</span>
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+        
+        html += `
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // ========== RECOMMENDATIONS ==========
+    if (result.recommendations && Array.isArray(result.recommendations) && result.recommendations.length > 0) {
+        html += '<div class="audit-recommendations mb-4">';
+        html += `
+            <div class="section-header d-flex align-items-center mb-3">
+                <div class="section-icon me-3">
+                    <i class="fas fa-lightbulb text-warning fa-lg"></i>
+                </div>
+                <h5 class="mb-0 text-dark">Recommandations</h5>
+            </div>
+        `;
+        
+        html += '<div class="recommendations-container">';
+        
+        result.recommendations.forEach((rec, index) => {
+            html += `
+                <div class="recommendation-item d-flex align-items-start mb-3 p-3 bg-warning bg-opacity-10 rounded-3 border-start border-4 border-warning">
+                    <div class="recommendation-number me-3 mt-1">
+                        <span class="badge bg-warning text-dark rounded-circle fw-bold" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;">
+                            ${index + 1}
+                        </span>
+                    </div>
+                    <div class="recommendation-content">
+                        <p class="mb-0 text-dark">${rec}</p>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>'; // fin recommendations-container
+        html += '</div>'; // fin audit-recommendations
+    }
+    
+    html += '</div>'; // fin audit-result-container
+    
+    return html;
+}
+
+function formatFileAuditResult(functionName, result) {
+    let html = `<div class="audit-result-card mb-3 text-starts">
+                    <div class="d-flex justify-content-between flex-column align-items-start">
+                        <h6 class="mb-1">
+                            <i class="fas fa-cog me-2"></i>${functionName}
+                        </h6>`;
+
+    if (result.description) {
+        html += `<small class="text-muted mb-2">${result.description}</small>`;
+    }
+
+    html += `</div>`;
+
+    if (!result) {
+        html += `<p>Aucun résultat</p></div>`;
+        return html;
+    }
+
+    // Affichage du score (en haut)
+    if ('score' in result) {
+        const score = result.score;
+
+        if (!score || (typeof score === 'object' && 'error' in score)) {
+            html += `<div class="text-danger fw-bold">Fonction non fonctionnelle</div>`;
+        } else if (typeof score === 'number') {
+            html += `<div class="stat-detail d-flex justify-content-between">
+                        <span class="stat-detail-label">Score</span>
+                        <span class="stat-detail-value">${score.toLocaleString()}</span>
+                    </div>`;
+        } else if (typeof score === 'object') {
+            Object.entries(score).forEach(([key, value]) => {
+                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                    // Objet imbriqué dans score
+                    html += `<div class="mt-3">
+                                <strong class="text-secondary">${formatKey(key)}</strong>
+                                <div class="ms-3 mt-2">`;
+                    Object.entries(value).forEach(([subKey, subValue]) => {
+                        html += `<div class="stat-detail d-flex justify-content-between">
+                                    <span class="stat-detail-label small">${formatKey(subKey)}</span>
+                                    <span class="stat-detail-value">${formatValue(subValue)}</span>
+                                </div>`;
+                    });
+                    html += `</div></div>`;
+                } else if (Array.isArray(value)) {
+                    html += `<div class="stat-detail d-flex align-items-start">
+                                <span class="stat-detail-label small">${formatKey(key)}</span>
+                                <span class="stat-detail-value">`;
+                    value.forEach((item) => {
+                        html += `<div>• ${formatValue(item)}</div>`;
+                    });
+                    html += `</span></div>`;
+                } else {
+                    html += `<div class="stat-detail d-flex justify-content-between">
+                                <span class="stat-detail-label small">${formatKey(key)}</span>
+                                <span class="stat-detail-value">${formatValue(value)}</span>
+                            </div>`;
+                }
+            });
+        } else {
+            html += `<div class="stat-detail d-flex justify-content-between">
+                        <span class="stat-detail-label">Score</span>
+                        <span class="stat-detail-value">${formatValue(score)}</span>
+                    </div>`;
+        }
+    } else {
+        html += `<p class="text-muted">Aucun score disponible</p>`;
+    }
+
+    // Affichage de problem_ids uniquement s’il y en a (après score)
+    if ('problem_ids' in result && Array.isArray(result.problem_ids) && result.problem_ids.length > 0) {
+        html += `<div class="mt-3">
+                    <strong>Problèmes détectés :</strong>
+                    <ul>`;
+        result.problem_ids.forEach(pid => {
+            html += `<li>${pid}</li>`;
+        });
+        html += `</ul></div>`;
+    }
+
+    // Affichage d'une erreur éventuelle
+    if ('error' in result) {
+        html += `<div class="alert alert-danger mt-2">${result.error}</div>`;
+    }
+
+    html += `</div>`; // fermeture de la carte principale
+
+    return html;
+}
+
+
+function formatKey(key) {
+    return key.replace(/_/g, ' ')
+              .replace(/\b\w/g, l => l.toUpperCase())
+              .replace(' Rate', ' (%)')
+              .replace(' Count', '')+ ':\t';
+}
+
+function formatValue(value) {
+    if (typeof value === 'number') {
+        return value.toLocaleString();
+    }
+    if (typeof value === 'object' && value !== null) {
+        // Transforme en JSON indenté pour affichage lisible
+        return `<pre>${JSON.stringify(value, null, 2)}</pre>`;
+    }
+    return value;
+}
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Charger la liste des configurations au lieu de charger automatiquement
+    loadConfigurationsList();
+    loadGTFSFiles('file');
+});
+</script>
+
+<style>
+
+    /* Styles pour les résultats d'audit améliorés */
+.audit-result-container {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* En-tête de status */
+.status-header-card {
+    transition: all 0.3s ease;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%) !important;
+}
+
+.status-header-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Icônes de section */
+.section-header {
+    border-bottom: 2px solid #e9ecef;
+    padding-bottom: 0.5rem;
+}
+
+.section-icon {
+    width: 40px;
+    height: 40px;
+    background: rgba(13, 110, 253, 0.1);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Cartes de résultats */
+.result-card {
+    transition: all 0.3s ease;
+    border: 1px solid #e9ecef !important;
+}
+
+.result-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.1) !important;
+}
+
+.result-card .card-header {
+    border-bottom: none;
+    background: linear-gradient(135deg, #0d6efd 0%, #0056b3 100%) !important;
+}
+
+/* Métriques */
+.metrics-table .metric-row {
+    transition: background-color 0.2s ease;
+}
+
+.metrics-table .metric-row:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+    border-radius: 4px;
+}
+
+.metric-label {
+    font-size: 0.9em;
+}
+
+.metric-value {
+    font-size: 1.1em;
+    color: #0d6efd !important;
+}
+
+/* Valeurs uniques */
+.single-value-container {
+    background: linear-gradient(135deg, rgba(13, 110, 253, 0.05) 0%, rgba(13, 110, 253, 0.1) 100%);
+    border-radius: 10px;
+}
+
+.display-4 {
+    font-size: 2.5rem !important;
+}
+
+/* Listes avec puces */
+.list-container {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.list-item {
+    transition: all 0.2s ease;
+    padding: 0.25rem;
+    border-radius: 4px;
+}
+
+.list-item:hover {
+    background-color: rgba(13, 110, 253, 0.05);
+}
+
+.bullet-point {
+    flex-shrink: 0;
+}
+
+/* Section explanation */
+.explanation-toggle .btn {
+    border-width: 2px;
+    transition: all 0.3s ease;
+}
+
+.explanation-toggle .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(13, 110, 253, 0.2);
+}
+
+.collapse-icon {
+    transition: transform 0.3s ease;
+}
+
+.explanation-toggle .btn[aria-expanded="true"] .collapse-icon {
+    transform: rotate(180deg);
+}
+
+.purpose-section {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
+}
+
+.explanation-item {
+    transition: all 0.2s ease;
+}
+
+.explanation-item:hover {
+    background-color: #f8f9fa !important;
+    transform: translateX(5px);
+}
+
+/* Recommandations */
+.recommendation-item {
+    transition: all 0.3s ease;
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%) !important;
+}
+
+.recommendation-item:hover {
+    transform: translateX(5px);
+    box-shadow: 0 4px 12px rgba(255, 193, 7, 0.2);
+}
+
+.recommendation-number .badge {
+    font-size: 0.8em;
+}
+
+/* Issues (si vous les ajoutez plus tard) */
+.issue-type-group {
+    margin-bottom: 1.5rem;
+}
+
+.issue-type-header {
+    background: rgba(13, 110, 253, 0.05);
+    padding: 0.75rem;
+    border-radius: 8px;
+    border-left: 4px solid #0d6efd;
+}
+
+.issue-item {
+    background: rgba(248, 249, 250, 0.8);
+    padding: 1rem;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.issue-item:hover {
+    background: rgba(248, 249, 250, 1);
+    transform: translateX(8px);
+}
+
+.affected-ids-container {
+    background: white;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .result-card {
+        margin-bottom: 1rem;
+    }
+    
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
+    
+    .section-icon {
+        margin-bottom: 0.5rem;
+        margin-right: 0 !important;
+    }
+    
+    .display-4 {
+        font-size: 2rem !important;
+    }
+}
+
+/* Scrollbar personnalisé pour les listes */
+.list-container::-webkit-scrollbar {
+    width: 6px;
+}
+
+.list-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.list-container::-webkit-scrollbar-thumb {
+    background: #0d6efd;
+    border-radius: 3px;
+}
+
+.list-container::-webkit-scrollbar-thumb:hover {
+    background: #0056b3;
+}
+
+.stat-detail {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.stat-detail:last-child {
+    border-bottom: none;
+}
+
+.stat-detail-label {
+    font-weight: 500;
+    color: #495057;
+}
+
+.stat-detail-value {
+    font-weight: 600;
+    color: #212529;
+}
+
+.file-type-icon {
+    width: 50px;
+    text-align: center;
+}
+
+.audit-function-card {
+    transition: all 0.3s ease;
+}
+
+.audit-function-card:hover {
+    transform: translateY(-2px);
+}
+
+.score-badge {
+    font-size: 0.9em;
+    min-width: 50px;
+}
+
+.config-status-indicator {
+    font-size: 0.8em;
+    transition: all 0.3s ease;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: #f8f9fa;
+    border-color: #dee2e6;
+}
+
+.text-purple {
+    color: #6f42c1 !important;
+}
+
+/* Améliorations pour l'accordéon avec checkbox externe */
+.accordion-header {
+    padding: 0;
+    margin-bottom: 0;
+}
+
+.accordion-header > div {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    background-color: #f8f9fa;
+    padding: 0.5rem;
+    margin-bottom: 0;
+}
+
+.accordion-button {
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.accordion-button:focus {
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* Style pour les checkboxes indeterminées */
+input[type="checkbox"]:indeterminate {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+}
+
+input[type="checkbox"]:indeterminate:before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 2px;
+    background-color: white;
+    transform: translate(-50%, -50%);
+}
+</style>
+{% endblock %}

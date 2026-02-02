@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}Contenu GTFS - GTFS Audit Tool{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-chart-line"></i> Contenu du GTFS</h2>
+</div>
+
+<!-- Vue d'ensemble avec style sobre et bleu -->
+<div class="card mb-4 shadow-lg border-0" style="border-radius: 15px; overflow: hidden;">
+    <!-- Header avec gradient bleu -->
+    <div class="card-header text-white text-center py-4" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);">
+        <h4 class="mb-2 fw-bold">
+            <i class="fas fa-chart-line me-3"></i>Vue d'ensemble du GTFS
+        </h4>
+        <p class="mb-0 opacity-75">Analyse complète de votre fichier de transport</p>
+    </div>
+    
+    <!-- Corps avec statistiques -->
+    <div class="card-body p-4" style="background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);">
+        
+        <!-- Statistiques principales en grille -->
+        <div class="row g-4 mb-4">
+            <!-- Fichiers -->
+            <div class="col-lg-2 col-md-4 col-sm-6">
+                <div class="stat-card text-center h-100" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 12px; padding: 1.5rem; border: 2px solid #2196f3;">
+                    <div class="stat-icon mb-2">
+                        <i class="fas fa-folder-open" style="font-size: 2.5rem; color: #1976d2;"></i>
+                    </div>
+                    <div class="stat-value fw-bold" id="filesCount" style="font-size: 2rem; color: #0d47a1;">-</div>
+                    <div class="stat-label text-muted fw-medium">Fichiers GTFS</div>
+                </div>
+            </div>
+            
+            <!-- Agences -->
+            <div class="col-lg-2 col-md-4 col-sm-6">
+                <div class="stat-card text-center h-100" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 12px; padding: 1.5rem; border: 2px solid #2196f3;">
+                    <div class="stat-icon mb-2">
+                        <i class="fas fa-building" style="font-size: 2.5rem; color: #1976d2;"></i>
+                    </div>
+                    <div class="stat-value fw-bold" id="agenciesCount" style="font-size: 2rem; color: #0d47a1;">-</div>
+                    <div class="stat-label text-muted fw-medium">Agences</div>
+                </div>
+            </div>
+            
+            <!-- Routes -->
+            <div class="col-lg-2 col-md-4 col-sm-6">
+                <div class="stat-card text-center h-100" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 12px; padding: 1.5rem; border: 2px solid #2196f3;">
+                    <div class="stat-icon mb-2">
+                        <i class="fas fa-route" style="font-size: 2.5rem; color: #1976d2;"></i>
+                    </div>
+                    <div class="stat-value fw-bold" id="routesCount" style="font-size: 2rem; color: #0d47a1;">-</div>
+                    <div class="stat-label text-muted fw-medium">Lignes</div>
+                </div>
+            </div>
+            
+            <!-- Arrêts -->
+            <div class="col-lg-2 col-md-4 col-sm-6">
+                <div class="stat-card text-center h-100" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 12px; padding: 1.5rem; border: 2px solid #2196f3;">
+                    <div class="stat-icon mb-2">
+                        <i class="fas fa-map-marker-alt" style="font-size: 2.5rem; color: #1976d2;"></i>
+                    </div>
+                    <div class="stat-value fw-bold" id="stopsCount" style="font-size: 2rem; color: #0d47a1;">-</div>
+                    <div class="stat-label text-muted fw-medium">Arrêts</div>
+                </div>
+            </div>
+            
+            <!-- Voyages -->
+            <div class="col-lg-2 col-md-4 col-sm-6">
+                <div class="stat-card text-center h-100" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 12px; padding: 1.5rem; border: 2px solid #2196f3;">
+                    <div class="stat-icon mb-2">
+                        <i class="fas fa-subway" style="font-size: 2.5rem; color: #1976d2;"></i>
+                    </div>
+                    <div class="stat-value fw-bold" id="tripsCount" style="font-size: 2rem; color: #0d47a1;">-</div>
+                    <div class="stat-label text-muted fw-medium">Voyages</div>
+                </div>
+            </div>
+            
+            <!-- Validité -->
+            <div class="col-lg-2 col-md-4 col-sm-6">
+                <div class="stat-card text-center h-100" style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); border-radius: 12px; padding: 1.5rem; border: 2px solid #2196f3;">
+                    <div class="stat-icon mb-2">
+                        <i class="fas fa-calendar-alt" style="font-size: 2.5rem; color: #1976d2;"></i>
+                    </div>
+                    <div class="stat-value fw-bold" id="validityDays" style="font-size: 1.5rem; color: #0d47a1;">- jours</div>
+                    <div class="stat-label text-muted fw-medium">Période</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Statistiques avancées -->
+        <div class="row g-4">
+            <div class="col-md-4">
+                <div class="info-card p-4" style="background: linear-gradient(135deg, #e8eaf6 0%, #c5cae9 100%); border-radius: 10px; border-left: 4px solid #3f51b5;">
+                    <h5 class="text-dark fw-bold mb-3"><i class="fas fa-chart-pie me-2"></i>Couverture</h5>
+                    <div id="coverageInfo">
+                        <div class="d-flex justify-content-between">
+                            <span style="font-size: 1.1rem;">Taux de service :</span>
+                            <span class="fw-bold" id="serviceRate" style="font-size: 1.1rem;">Calcul...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="info-card p-4" style="background: linear-gradient(135deg, #e8eaf6 0%, #c5cae9 100%); border-radius: 10px; border-left: 4px solid #3f51b5;">
+                    <h5 class="text-dark fw-bold mb-3"><i class="fas fa-star me-2"></i>Qualité</h5>
+                    <div id="qualityInfo">
+                        <div class="d-flex justify-content-between">
+                            <span style="font-size: 1.1rem;">Score global :</span>
+                            <span class="fw-bold" id="qualityScore" style="font-size: 1.1rem;">Calcul...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="info-card p-4" style="background: linear-gradient(135deg, #e8eaf6 0%, #c5cae9 100%); border-radius: 10px; border-left: 4px solid #3f51b5;">
+                    <h5 class="text-dark fw-bold mb-3"><i class="fas fa-check-circle me-2"></i>Complétude</h5>
+                    <div id="completenessInfo">
+                        <div class="d-flex justify-content-between">
+                            <span style="font-size: 1.1rem;">Données complètes :</span>
+                            <span class="fw-bold" id="completenessRate" style="font-size: 1.1rem;">Calcul...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Accordéon dynamique -->
+<div class="accordion" id="statsAccordion">
+    <div class="text-center py-4">
+        <div class="spinner-border" role="status"></div>
+        <p class="mt-2">Chargement des catégories...</p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block styles %}
+<style>
+.stat-summary {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    background: #f8f9fa;
+    height: 100%;
+}
+
+.stat-icon {
+    font-size: 2rem;
+    margin-right: 1rem;
+    min-width: 50px;
+    text-align: center;
+}
+
+.stat-info {
+    flex-grow: 1;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: #6c757d;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #212529;
+    margin-top: 0.25rem;
+}
+
+.stat-detail {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.stat-detail:last-child {
+    border-bottom: none;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const categoryIcons = {
+    'files': 'fas fa-folder-open text-primary',
+    'agency': 'fas fa-building text-info',
+    'routes': 'fas fa-route text-success',
+    'stops': 'fas fa-map-marker-alt text-danger',
+    'trips': 'fas fa-subway text-warning',
+    'calendar': 'fas fa-calendar-alt text-secondary',
+    'schedule': 'fas fa-clock text-info',
+    'quality': 'fas fa-star text-warning',
+    'shapes': 'fas fa-bezier-curve text-purple',
+    'fares': 'fas fa-euro-sign text-success',
+    'transfers': 'fas fa-exchange-alt text-info',
+    'pathways': 'fas fa-walking text-secondary',
+    'extensions': 'fas fa-puzzle-piece text-muted',
+    'summary': 'fas fa-chart-pie text-primary'
+};
+
+const categoryNames = {
+    'files': 'Fichiers',
+    'agency': 'Agences', 
+    'routes': 'Routes',
+    'stops': 'Arrêts',
+    'trips': 'Voyages',
+    'calendar': 'Calendrier',
+    'schedule': 'Horaires', 
+    'quality': 'Qualité',
+    'shapes': 'Tracés',
+    'fares': 'Tarifs',
+    'transfers': 'Correspondances',
+    'pathways': 'Cheminements',
+    'extensions': 'Extensions',
+    'summary': 'Résumé'
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    loadAllCategories();
+});
+
+function loadStats() {
+    fetch('/api/statistics/essential')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const results = data.results;
+                
+                // Statistiques de base
+                document.getElementById('filesCount').textContent = 
+                    results.files?.present_files?.result?.count || '0';
+                document.getElementById('agenciesCount').textContent = 
+                    results.agency?.agency_count?.result?.count || '0';
+                document.getElementById('routesCount').textContent = 
+                    results.routes?.routes_count_by_type?.result?.total || '0';
+                document.getElementById('stopsCount').textContent = 
+                    results.stops?.stops_count_by_type?.result?.total || '0';
+                document.getElementById('tripsCount').textContent = 
+                    results.trips?.trips_count_and_info?.result?.total || '0';
+                const validityDays = results.calendar?.calendar_validity_period?.result?.duration_days || 0;
+                document.getElementById('validityDays').textContent = `${validityDays} jours`;
+                
+                // Statistiques avancées
+                // Taux de service (ratio voyages/routes)
+                const routes = results.routes?.routes_count_by_type?.result?.total || 1;
+                const trips = results.trips?.trips_count_and_info?.result?.total || 0;
+                const serviceRate = Math.round((trips / routes) * 100) / 100;
+                document.getElementById('serviceRate').textContent = `${serviceRate} voyages/ligne`;
+                
+                // Score de qualité (exemple basé sur la complétude)
+                let qualityScore = 85; // Score par défaut
+                if (results.quality?.data_completeness?.result?.overall_score) {
+                    qualityScore = Math.round(results.quality.data_completeness.result.overall_score);
+                }
+                document.getElementById('qualityScore').innerHTML = `<span style="color: ${qualityScore > 80 ? '#4caf50' : qualityScore > 60 ? '#ff9800' : '#f44336'}">${qualityScore}%</span>`;
+                
+                // Taux de complétude (exemple)
+                const agencies = results.agency?.agency_count?.result?.count || 0;
+                const stops = results.stops?.stops_count_by_type?.result?.total || 0;
+                let completenessRate = 'Bon';
+                if (agencies > 0 && routes > 0 && stops > 0 && trips > 0) {
+                    completenessRate = validityDays > 30 ? 'Excellent' : 'Bon';
+                } else {
+                    completenessRate = 'Incomplet';
+                }
+                document.getElementById('completenessRate').innerHTML = `<span style="color: ${completenessRate === 'Excellent' ? '#4caf50' : completenessRate === 'Bon' ? '#ff9800' : '#f44336'}">${completenessRate}</span>`;
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            // Affichage d'erreur gracieux
+            document.getElementById('serviceRate').textContent = 'Erreur';
+            document.getElementById('qualityScore').textContent = 'Erreur';
+            document.getElementById('completenessRate').textContent = 'Erreur';
+        });
+}
+
+function loadAllCategories() {
+    fetch('/api/statistics/health')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success && data.categories) {
+                createAccordions(data.categories);
+            } else {
+                document.getElementById('statsAccordion').innerHTML = 
+                    '<div class="alert alert-danger">Erreur de chargement des catégories</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            document.getElementById('statsAccordion').innerHTML = 
+                '<div class="alert alert-danger">Erreur de communication</div>';
+        });
+}
+
+function createAccordions(categories) {
+    let html = '';
+    
+    categories.forEach((category, index) => {
+        const categoryName = categoryNames[category] || category;
+        const categoryIcon = categoryIcons[category] || 'fas fa-chart-bar text-muted';
+        
+        html += `
+            <div class="accordion-item mb-3">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" 
+                            data-bs-toggle="collapse" data-bs-target="#${category}" 
+                            onclick="loadCategory('${category}')">
+                        <i class="${categoryIcon} me-3"></i> ${categoryName}
+                    </button>
+                </h2>
+                <div id="${category}" class="accordion-collapse collapse" data-bs-parent="#statsAccordion">
+                    <div class="accordion-body" id="${category}-content">
+                        <div class="text-center py-3">
+                            <div class="spinner-border"></div>
+                            <p class="mt-2">Chargement des statistiques...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    document.getElementById('statsAccordion').innerHTML = html;
+}
+
+function loadCategory(category) {
+    const contentDiv = document.getElementById(category + '-content');
+    if (contentDiv && contentDiv.innerHTML.includes('spinner-border')) {
+        fetch(`/api/statistics/category/${category}/calculate`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const stats = Object.entries(data.results);
+                let html = '<div class="row">';
+                
+                stats.forEach(([name, stat], index) => {
+                    html += '<div class="col-md-4 mb-4">';
+                    html += '<div class="border-bottom pb-3 h-100">';
+                    html += '<h6 class="text-primary"><i class="fas fa-chart-bar me-2"></i>' + (stat.name || name) + '</h6>';
+                    
+                    if (stat.description) {
+                        html += '<p class="small text-muted mb-2">' + stat.description + '</p>';
+                    }
+                    
+                    if (stat.error) {
+                        html += '<div class="alert alert-warning">Erreur: ' + stat.error + '</div>';
+                    } else if (stat.result) {
+                        // Affichage direct avec fw-bold
+                        if (typeof stat.result === 'object') {
+                            Object.entries(stat.result).forEach(([key, value]) => {
+                                const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()).replace(' Rate', '').replace(' Count', '');
+                                if (typeof value === 'object' && value !== null) {
+                                    html += '<div class="mt-2"><strong class="text-secondary">' + label + ':</strong></div>';
+                                    Object.entries(value).forEach(([k, v]) => {
+                                        html += '<div class="d-flex justify-content-between"><span class="ms-2">' + k + ':</span><span class="fw-bold">' + v + '</span></div>';
+                                    });
+                                } else {
+                                    html += '<div class="d-flex justify-content-between"><span>' + label + ':</span><span class="fw-bold">' + (typeof value === 'number' ? value.toLocaleString() : value) + '</span></div>';
+                                }
+                            });
+                        } else {
+                            html += '<div class="d-flex justify-content-between"><span>Valeur:</span><span class="fw-bold">' + stat.result + '</span></div>';
+                        }
+                    } else {
+                        html += '<p class="text-muted">Aucun résultat</p>';
+                    }
+                    
+                    html += '</div>';
+                    html += '</div>';
+                });
+                
+                html += '</div>';
+                contentDiv.innerHTML = html || '<div class="alert alert-info">Aucune statistique disponible</div>';
+            } else {
+                contentDiv.innerHTML = '<div class="alert alert-danger">Erreur: ' + data.error + '</div>';
+            }
+        })
+        .catch(error => {
+            contentDiv.innerHTML = '<div class="alert alert-danger">Erreur: ' + error.message + '</div>';
+        });
+    }
+}
+
+function formatResult(result) {
+    if (!result) return '<p class="text-muted">Aucun résultat</p>';
+    
+    if (typeof result === 'number') {
+        return `<div class="stat-detail"><span>Valeur:</span><span>${result.toLocaleString()}</span></div>`;
+    }
+    
+    if (typeof result === 'object') {
+        let html = '';
+        Object.entries(result).forEach(([key, value]) => {
+            const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                html += `<div class="mt-2"><strong class="text-secondary">${label}:</strong></div>`;
+                Object.entries(value).forEach(([k, v]) => {
+                    html += `<div class="stat-detail ms-3"><span>${k}:</span><span>${typeof v === 'number' ? v.toLocaleString() : v}</span></div>`;
+                });
+            } else if (Array.isArray(value)) {
+                html += `<div class="stat-detail"><span>${label}:</span><span>${value.join(', ')}</span></div>`;
+            } else {
+                html += `<div class="stat-detail"><span>${label}:</span><span>${typeof value === 'number' ? value.toLocaleString() : value}</span></div>`;
+            }
+        });
+        return html;
+    }
+    
+    return `<p>${result}</p>`;
+}
+</script>
+{% endblock %}
